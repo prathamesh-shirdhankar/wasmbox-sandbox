@@ -1,0 +1,4 @@
+wasmtime
+fastapi
+uvicorn[standard]
+pytest
