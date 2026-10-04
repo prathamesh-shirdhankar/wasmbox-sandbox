@@ -24,3 +24,7 @@ Secure multi-tenant Python plugin sandbox using WebAssembly (Wasmtime), with a R
 ## How to run
 
 Coming as the project grows.
+
+- Never push directly to `main`. Nobody merges their own PR.
+
+- Use Python 3.12 (check with `python --version`)
