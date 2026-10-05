@@ -1,6 +1,6 @@
 import { useState } from "react";
-import CodeEditor from "./CodeEditor";
-import OutputPanel from "./OutputPanel";
+import CodeEditor from "./components/CodeEditor";
+import OutputPanel from "./components/OutputPanel";
 import { runCode } from "./api";
 
 function App() {
