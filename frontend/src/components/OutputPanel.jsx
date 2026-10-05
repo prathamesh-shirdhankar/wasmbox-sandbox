@@ -55,6 +55,7 @@ const styles = {
     padding: "15px",
     borderRadius: "6px",
     marginBottom: "15px",
+    textAlign: "left",
   },
 
   errorBox: {
@@ -62,6 +63,7 @@ const styles = {
     color: "#900",
     padding: "15px",
     borderRadius: "6px",
+    textAlign: "left",
   },
 };
 
