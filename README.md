@@ -21,10 +21,25 @@ Secure multi-tenant Python plugin sandbox using WebAssembly (Wasmtime), with a R
 - Small pull requests, and nobody merges their own
 - Stuck for 90 minutes? Ask in the team chat
 
-## How to run
+## Setup (everyone)
 
-Coming as the project grows.
+1. Install Python 3.12 (check with `py -0` on Windows)
+2. From the repo folder, create and activate a virtual environment:
+```
+   py -3.12 -m venv .venv
+   .venv\Scripts\Activate.ps1
+```
+   (Git Bash: `source .venv/Scripts/activate`)
+3. Install the backend packages:
+```
+   pip install -r backend/requirements.txt
+```
 
-- Never push directly to `main`. Nobody merges their own PR.
+## How to run each part
 
-- Use Python 3.12 (check with `python --version`)
+Each folder explains how to run its own part:
+
+- WASM runtime and scripts: `backend/app/runtime/README.md` and `backend/scripts/README.md`
+- Web server: `backend/app/api/README.md`
+- Tests: `backend/tests/README.md`
+- Frontend: `frontend/README.md`
