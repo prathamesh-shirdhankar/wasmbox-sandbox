@@ -1,1 +1,7 @@
-The website in the browser (React and Monaco). Owner: Sashmita
+# Frontend
+
+## Run the app
+
+npm install
+npm run dev
+npm run build
