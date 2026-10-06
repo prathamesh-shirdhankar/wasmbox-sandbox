@@ -6,8 +6,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi.testclient import TestClient
 from app.main import app
+from app.api.schemas import RunResponse
 
 client = TestClient(app)
+
+
+def test_run_response_from_contract_example():
+    """Build a RunResponse from the example in docs/API_CONTRACT.md and check the fields."""
+    example_payload = {
+        "status": "ok",
+        "stdout": "hi\n",
+        "stderr": "",
+        "exec_ms": 0,
+        "mem_bytes": 0,
+    }
+    response = RunResponse(**example_payload)
+    assert response.status == "ok"
+    assert response.stdout == "hi\n"
+    assert response.stderr == ""
+    assert response.exec_ms == 0
+    assert response.mem_bytes == 0
 
 
 def test_health_endpoint():
