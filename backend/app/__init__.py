@@ -1,0 +1,1 @@
+"""WasmBox backend application package."""
