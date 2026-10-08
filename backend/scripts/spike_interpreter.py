@@ -1,5 +1,4 @@
-"""
-Day 3 Spike: Evaluate Python-in-WASI interpreters.
+"""Evaluate Python-in-WASI interpreters.
 Tests MicroPython WASI via micropython-wasm package and measures performance.
 """
 import time
