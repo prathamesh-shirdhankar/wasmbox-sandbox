@@ -60,3 +60,11 @@ Real execution starts in Week 2. The shape of the response stays exactly the sam
 1. Open a PR that edits this file
 2. Vineet and Sashmita both approve
 3. Then change the code
+
+
+
+## Notes
+
+1. 
+2. 
+3. 
