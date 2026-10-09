@@ -265,10 +265,58 @@ Current Block D status:
 
 ---
 
-#### 3. Recommendation for Week 2
+#### 3. Interim Notes (Day 3)
+- MicroPython WASI emerged as the top candidate for Week 2.
+- Next step for Day 4: Investigate Wizer pre-initialization on MicroPython and finalize recommendations.
 
-1. **Primary Runtime**: **MicroPython WASI** is the clear winner for our lightweight sandbox:
-   - Ultra-small binary footprint (362 KB vs >25 MB)
-   - Zero disk dependencies
-   - Clean security posture (no host directory mounts)
-2. **Next Step (Day 4)**: Investigate **Wizer** pre-initialization on the chosen candidate to evaluate if snapshotting can reduce the ~220ms execution latency down to sub-50ms.
+---
+
+### Day 4: Wizer Pre-initialization & Final Spike Evaluation
+
+#### 1. Wizer Investigation (Time-box Findings)
+
+- **Tooling Objective**: Evaluate whether **Wizer** (`bytecodealliance/wizer`) can pre-initialize the Python runtime state into the WASM snapshot to eliminate cold-start latency (aiming for sub-50ms execution).
+- **How Wizer Operates**:
+  - Requires an exported initialization entrypoint (typically `wizer.initialize`).
+  - Executes the init function at build time, takes a snapshot of the instance's linear memory and globals, and outputs an initialized `.wasm` file.
+  - **Critical Constraint**: Modules *cannot* call imported host functions that perform external I/O (such as WASI file descriptor reads/writes, clocks, or environment calls) during the initialization phase.
+
+- **Findings & Evidence**:
+  - **MicroPython WASI (`micropython-wasi.wasm`)**:
+    - **Result**: **Direct off-the-shelf Wizer snapshotting failed / not viable without C source rebuild.**
+    - **Evidence**:
+      1. Prebuilt binaries export standard WASI `_start` rather than a designated `wizer.initialize` hook.
+      2. Standard WASI runtime startup executes initial WASI system calls (`environ_sizes_get`, `fd_read`, `clock_time_get`) to inspect environment and terminal state. Wizer disallows unmocked WASI I/O imports during snapshotting, leading to instant traps or initialization aborts.
+      3. Splitting `mp_init()` into an isolated WASM export and stubbing out all WASI calls requires patching the MicroPython C runtime and compiling with `wasi-sdk`, which is beyond the 1-day spike boundary.
+  - **CPython WASI (`componentize-py` / CPython)**:
+    - **Result**: Tools like `componentize-py` do use Wizer successfully, but they rely on an extensive Rust toolchain, a Component Model wrapper, and hefty runtime assets (>25 MB) with high cold-start times if snapshots are not finely tuned.
+- **Is Wizer Necessary for Week 2?**:
+  - **No.** MicroPython WASI without snapshotting already executes trivial scripts in **~220ms – 260ms** (and ~420ms on initial cold start). For interactive code execution in a student playground, 220ms is well within acceptable latency bounds.
+
+---
+
+#### 2. Summary & Core Answers
+
+1. **Chosen Interpreter Candidate**:
+   - **MicroPython WASI** (`micropython-wasi.wasm` via `micropython-wasm` 0.1a2, binary size: 362.2 KB).
+2. **Exact Command and Output to Run Code**:
+   ```python
+   from micropython_wasm import run
+   result = run('print("hi")')
+   print(result.stdout)
+   # Output:
+   # hi\n
+   ```
+3. **Does it need a stdlib directory on disk?**:
+   - **No.** MicroPython compiles core primitives and standard library subsets directly into the WebAssembly binary. No `/lib/python3.x` directory or host directory mount (`preopen_dir`) is required.
+4. **Did Wizer work?**:
+   - **No.** Off-the-shelf WASI binaries cannot be snapshotted directly due to missing initialization exports and disallowed WASI I/O imports during snapshot creation.
+5. **Concrete Recommendation for Week 2 Implementation**:
+   - Use **MicroPython WASI** (`micropython-wasi.wasm`) driven by `wasmtime >= 49.0.0` (with the WebAssembly exceptions proposal enabled).
+   - Configure a fully sealed `WasiConfig` (pipes for stdin/stdout/stderr, zero pre-opened directories, no network access).
+   - Map guest exit codes (such as exit code 1 on unhandled Python exceptions) to the standard API response: `status: "error"`.
+6. **Fallback Plan**:
+   - If user code requires third-party packages or full CPython standard library modules not supported by MicroPython:
+     - **Option 1**: Mount an extracted CPython WASI root read-only in a sandboxed directory.
+     - **Option 2**: Run a isolated containerized worker process using standard Docker isolation.
+

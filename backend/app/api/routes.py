@@ -14,9 +14,19 @@ def get_health() -> HealthResponse:
 def run_code(payload: RunRequest) -> RunResponse:
     """
     Mock code execution endpoint adhering to Week 1 API contract.
-    Returns status: 'ok' and formatted mock stdout with character count.
+    Handles empty strings, whitespace-only code, and normal code payloads.
     """
-    char_count = len(payload.code)
+    code = payload.code
+    if not code.strip():
+        return RunResponse(
+            status="ok",
+            stdout="[mock] empty code received\n",
+            stderr="",
+            exec_ms=0.0,
+            mem_bytes=0,
+        )
+
+    char_count = len(code)
     return RunResponse(
         status="ok",
         stdout=f"[mock] received {char_count} characters\n",

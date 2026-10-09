@@ -64,6 +64,26 @@ def test_run_missing_code_payload():
     assert response.status_code == 422
 
 
+def test_run_empty_code_payload():
+    """Verify POST /run with empty string gracefully returns mock response."""
+    response = client.post("/run", json={"code": ""})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["stdout"] == "[mock] empty code received\n"
+    assert data["stderr"] == ""
+
+
+def test_run_whitespace_code_payload():
+    """Verify POST /run with whitespace-only code gracefully returns mock response."""
+    response = client.post("/run", json={"code": "   \n\t  "})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["stdout"] == "[mock] empty code received\n"
+    assert data["stderr"] == ""
+
+
 def test_cors_headers_present():
     """Verify CORS headers allow requests from frontend localhost:5173."""
     response = client.options(
