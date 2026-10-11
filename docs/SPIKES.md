@@ -452,6 +452,14 @@ MicroPython is designed for microcontrollers and embedded environments. Plugin a
 
 ---
 
+### Week 1 Retrospective & Test Isolation Verification (11 October 2026)
+
+- **Test Suite Health**: All Week 1 endpoint and contract unit tests pass under `pytest` with zero external network access.
+- **Filesystem Isolation**: Verified that the WebAssembly instance has no preopened host directories mapped via WASI, preventing arbitrary file read/write access.
+- **Contract Boundary**: Re-verified standard 5-field schema output consistency across benign runs and empty input rejections.
+
+---
+
 #### 2. Summary & Core Answers
 
 1. **Chosen Interpreter Candidate**:
