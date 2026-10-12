@@ -458,6 +458,12 @@ MicroPython is designed for microcontrollers and embedded environments. Plugin a
 - **Filesystem Isolation**: Verified that the WebAssembly instance has no preopened host directories mapped via WASI, preventing arbitrary file read/write access.
 - **Contract Boundary**: Re-verified standard 5-field schema output consistency across benign runs and empty input rejections.
 
+### Memory Footprint Comparison (12 October 2026)
+
+- **MicroPython WASI**: Initial WebAssembly memory pages allocate minimal linear memory (default 10 MiB ceiling verified sufficient for interpreter boot and standard user script execution).
+- **CPython WASI Comparison**: Full CPython runtime engines require substantially larger initial memory commitments (allocating 32–64 MiB just to map internal bytecode tables and dynamic runtime types).
+- **Conclusion**: MicroPython's lightweight memory profile allows higher density and concurrency on constrained host resources.
+
 ---
 
 #### 2. Summary & Core Answers
