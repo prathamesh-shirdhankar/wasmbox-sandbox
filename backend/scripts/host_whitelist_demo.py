@@ -1,20 +1,37 @@
+
 from pathlib import Path
 
-from wasmtime import Func, FuncType, Instance, Module, Store, ValType
+from wasmtime import FuncType, Linker, Module, Store, ValType
 
 
 def host_log(x):
     print("host received:", x)
 
 
+# Create the Wasmtime environment.
 store = Store()
-module = Module(store.engine, Path("plugins/benign/host_evil.wat").read_text())
+module = Module(
+    store.engine,
+    Path("plugins/benign/host_evil.wat").read_text(),
+)
 
-# We only supply "log". The module asked for "delete_everything".
-log = Func(store, FuncType([ValType.i32()], []), host_log)
+# Create a linker that registers host functions by their names.
+linker = Linker(store.engine)
+
+# Register only the function named host.log.
+# Do NOT register host.delete_everything.
+linker.define_func(
+    "host",
+    "log",
+    FuncType([ValType.i32()], []),
+    host_log,
+)
+
+print("Registered authorized import: host.log")
+print("Attempting to load the module requesting host.delete_everything")
 
 try:
-    Instance(store, module, [log])
-    print("UNSAFE: module started without its import being satisfied")
+    linker.instantiate(store, module)
+    print("UNSAFE: module started without authorization")
 except Exception as err:
     print("Blocked as expected:", type(err).__name__, "-", err)
