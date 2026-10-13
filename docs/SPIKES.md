@@ -233,8 +233,10 @@ Current Block D status:
 
 | Candidate | Binary Size | Stdlib on Disk Required? | Startup Latency | Sandbox Isolation |
 |---|---|---|---|---|
-| **MicroPython WASI** (`micropython-wasm` 0.1a2) | **362.2 KB** (370,907 B) | **No** (Fully self-contained) | ~220ms – 420ms | Excellent (Zero host FS mount required) |
-| **CPython WASI** (wasi-sdk / VMware Wasm Labs) | ~25 MB – 35 MB | **Yes** (`/lib/python3.x` required) | ~800ms – 2500ms | Moderate (Requires mounting stdlib directory) |
+| **MicroPython WASI** (`micropython-wasm` 0.1a2) | **362.2 KB** (370,907 B, measured) | **No** (Fully self-contained) | ~220ms cold / **0.9ms warm** (measured) | Excellent (Zero host FS mount required) |
+| **CPython WASI** (wasi-sdk / VMware Wasm Labs) | ~25 MB – 35 MB *(estimate)* | **Yes** (`/lib/python3.x` required) | ~800ms – 2500ms *(estimate)* | Moderate (Requires mounting stdlib directory) |
+
+> **Note on CPython numbers:** The CPython binary size (~25–35 MB) and cold-start latency (~800–2500 ms) are **estimates** based on upstream WebAssembly Language Runtimes (VMware Labs / SingleStore WASI Python benchmarks) and distribution artifacts, rather than local live benchmarks, because CPython requires bundling and mounting the full filesystem standard library directory.
 
 ---
 
@@ -242,26 +244,36 @@ Current Block D status:
 
 ##### Candidate A: MicroPython in WASI
 - **Package / Binary**: Tested via `micropython-wasm` v0.1a2 (`micropython-wasi.wasm`, 362.2 KB).
+  - SHA256: `1C054A4D21D4A6589BC568821EBF562889988DDAAF8A17A2E2985A56CF228051`
 - **Execution Test**:
   ```python
   from micropython_wasm import run
   result = run('print("hi")')
   # stdout: 'hi\n'
   ```
-- **Benchmark Results** (`backend/scripts/spike_interpreter.py`):
-  - `print('hi')`: 422.8 ms (initial cold start)
-  - `sum(range(100))`: 223.9 ms
-  - Multi-line loops: 268.7 ms
-  - Syntax/Runtime Error (`raise ValueError`): ExitTrap with code 1 in 248.4 ms
+- **Granular Timing Breakdown & Averaged Measurements (10 runs)**:
+  - **(a) Module Compilation (`Module.from_file`)**: ~225.8 ms (wasmtime compiling the 362 KB bytecode with Cranelift)
+  - **(b) Instantiation + WASI Setup (`linker.instantiate`)**: ~1.5 ms
+  - **(c) Script Execution (`_start`)**: ~0.6 ms
+  - **Total Fresh Cold Start**: ~227.9 ms
+  - **Total Warm Start (Pre-compiled / Cached Module)**: **~0.9 ms** — well within our **50 ms** execution budget!
+  - **Key Takeaway for Week 2**: The ~220 ms latency observed during the spike is purely one-time JIT compilation overhead. By caching the compiled `Module` instance in memory across requests, subsequent sandbox runs execute in under **1 ms**.
 - **Stdlib on Disk**: **None**. MicroPython bundles core modules directly inside the binary. Does not need any host directory mounted via WASI `preopen_dir`.
 - **Security Boundary**: Maximizes isolation. The WASI sandbox can run with zero directory capabilities, preventing filesystem leakage or escape.
 - **Runtime Requirement**: Requires wasmtime engine with exceptions proposal support (`wasmtime >= 49.0.0`).
 
+##### Limitations of MicroPython for Plugin Authors:
+MicroPython is designed for microcontrollers and embedded environments. Plugin authors should be aware of the following trade-offs:
+1. **Standard Library Subsets**: MicroPython provides lightweight micro-variants of standard libraries (e.g., `ure` instead of full `re`, `utime` instead of `datetime`/`time`, `ujson` instead of full `json`).
+2. **Missing System Modules**: Heavy system modules are absent: no `multiprocessing`, `ctypes`, `threading`, `sqlite3`, `socket` (in raw WASI), or subprocess control.
+3. **No Native C-Extensions**: Modules requiring compiled C extensions or wheels (such as `numpy`, `pandas`, `scipy`, or `requests` with C bindings) cannot be imported.
+4. **Language Subsets**: Adheres to Python 3.4/3.5+ syntax with common 3.8+ features, but advanced introspection, complex metaclass hooks, and stack frame hacking are omitted to maintain the 362 KB binary footprint.
+
 ##### Candidate B: CPython in WASI
-- **Binary Size & Stdlib**: CPython builds (such as CPython 3.11/3.12 for WASI) are 25–35 MB and require a full extracted standard library directory on disk (`/lib/python3.x`).
+- **Binary Size & Stdlib**: CPython builds (such as CPython 3.11/3.12 for WASI) are 25–35 MB *(estimate)* and require a full extracted standard library directory on disk (`/lib/python3.x`).
 - **Disk Impact**: Without preopened directories, CPython panics at startup (`Fatal Python error: init_fs_encoding: failed to get Python codec`).
 - **Security Impact**: Mounting host folders creates operational overhead (distributing and packaging stdlib) and increases the attack surface if directory permissions are misconfigured.
-- **Startup Latency**: High cold-start time (800ms – 2500ms) without pre-initialization.
+- **Startup Latency**: High cold-start time (800ms – 2500ms, *estimate*) without pre-initialization.
 
 ---
 
