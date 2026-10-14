@@ -86,9 +86,9 @@ buffer bytes: b''
 
 Result:
 
-**PARTIAL for Extism guest-memory access.**
+**UNRESOLVED for Extism guest-memory access.**
 
-The Extism host-call mechanism received the pointer and length, but reading the text from guest memory was not resolved during the original time-boxed spike.
+The Extism host-call mechanism received the pointer and length, but the accessible buffer was empty. Guest-memory access through the Extism Python API remains unresolved. The cause has not been established.
 
 #### Direct Wasmtime comparison
 
@@ -131,7 +131,7 @@ The host function successfully retrieved the calling module's exported memory, r
 
 #### Combined conclusion
 
-The direct Wasmtime text-memory test passes, while the earlier Extism guest-memory test remains partial.
+The direct Wasmtime text-memory test passes, while Extism guest-memory access remains unresolved.
 
 The Wasmtime result demonstrates that this text handoff works in the tested example. It does not establish the exact cause of Extism's empty-buffer result. An Extism-specific memory-access or memory-model issue is a possible hypothesis, not a confirmed diagnosis.
 
@@ -201,7 +201,7 @@ Determine whether Extism can provide the host-function mechanism required by Was
 Environment:
 - Windows PowerShell
 - Python project `.venv`
-- Python 3.12.x
+- Python 3.12.10
 - extism 1.1.1
 - extism-sys 1.21.0
 - WABT 1.0.34
@@ -281,7 +281,7 @@ Extism is technically promising for the host-function layer, but the original sp
 Recommended decision:
 
 1. Keep the Extism integer host-function proof as a feasibility result.
-2. Record the Extism text-memory test as partial; the exact cause of the empty-buffer result remains unresolved.
+2. Record Extism guest-memory access as unresolved; the exact cause of the empty-buffer result remains unestablished.
 3. Keep the direct Wasmtime text-memory proof as a separate, successful test.
 4. Keep the Wasmtime Linker import-rejection proof as evidence that an unregistered import is rejected in the tested case.
 5. Do not integrate Extism into `backend/app/runtime/wasm_host.py` yet.
@@ -292,7 +292,7 @@ Recommended decision:
 
 Current findings:
 - **Integer host-function invocation through Extism:** PASS.
-- **Text-memory handoff through Extism:** PARTIAL.
+- **Text-memory handoff through Extism:** UNRESOLVED.
 - **Text-memory handoff through direct Wasmtime in the tested example:** PASS.
 - **Rejection of the tested unregistered import through Wasmtime Linker:** PASS.
 - **Complete Python-in-WASM interpreter → host-function path:** NOT PROVEN.
