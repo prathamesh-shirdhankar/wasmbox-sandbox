@@ -244,7 +244,8 @@ Current Block D status:
 
 ##### Candidate A: MicroPython in WASI
 - **Package / Binary**: Tested via `micropython-wasm` v0.1a2 (`micropython-wasi.wasm`, 362.2 KB).
-  - SHA256: `1C054A4D21D4A6589BC568821EBF562889988DDAAF8A17A2E2985A56CF228051`
+  - **SHA-256**: `1C054A4D21D4A6589BC568821EBF562889988DDAAF8A17A2E2985A56CF228051`  
+    *(verified with `Get-FileHash <path>\micropython-wasi.wasm -Algorithm SHA256` on Windows PowerShell)*
 - **Execution Test**:
   ```python
   from micropython_wasm import run
@@ -255,12 +256,80 @@ Current Block D status:
   - **(a) Module Compilation (`Module.from_file`)**: ~225.8 ms (wasmtime compiling the 362 KB bytecode with Cranelift)
   - **(b) Instantiation + WASI Setup (`linker.instantiate`)**: ~1.5 ms
   - **(c) Script Execution (`_start`)**: ~0.6 ms
-  - **Total Fresh Cold Start**: ~227.9 ms
+  - **Total Fresh Cold Start (a + b + c)**: ~227.9 ms
   - **Total Warm Start (Pre-compiled / Cached Module)**: **~0.9 ms** — well within our **50 ms** execution budget!
   - **Key Takeaway for Week 2**: The ~220 ms latency observed during the spike is purely one-time JIT compilation overhead. By caching the compiled `Module` instance in memory across requests, subsequent sandbox runs execute in under **1 ms**.
+
+##### Timing Boundary Clarification
+
+The team lead observed that the sum of individually measured phases (b + c) averages **~2.1 ms**, yet the separately measured warm start reports **~0.9 ms**. Both numbers are correct — they measure different scopes:
+
+| Measurement | What is timed | Loop setup |
+|---|---|---|
+| **(b) + (c) summed** (2.1 ms) | Each phase is timed in its **own fresh loop iteration** — a new `Store`, `WasiConfig`, `Linker`, and `linker.instantiate` call per run, then `_start` in a separate measurement. | Two independent 10-iteration loops, phases measured individually. |
+| **Warm start total** (0.9 ms) | A **single contiguous timer** (`t0 … t1`) covers the entire call: `Store()` → `set_fuel` → `WasiConfig()` → `stdout_custom` → `set_wasi` → `Linker()` → `define_wasi` → `_define_host_call` → `linker.instantiate` → `inst.exports` → `start_fn(store)`. The pre-compiled `reused_module` is passed in, so `Module.from_file` is never called. | Single 10-iteration loop, both phases timed together. |
+
+The 2.1 ms figure is higher because each sub-phase incurs Python overhead from constructing its own fresh objects before the clock starts (i.e., the `Store` created for phase (b) is thrown away and rebuilt for phase (c)). In a real request path the objects are constructed once and reused within the same call, matching the 0.9 ms warm start measurement.
+
+**Formula**:
+```
+Warm start ≈ single_contiguous_timer(Store + WasiConfig + Linker + instantiate + execute)
+           ≈ 0.9 ms   (Module.from_file excluded — module is pre-cached)
+
+Fresh cold start ≈ Module.from_file + Store + WasiConfig + Linker + instantiate + execute
+                 ≈ 225.8 ms + 0.9 ms ≈ 226.7 ms
+```
+
 - **Stdlib on Disk**: **None**. MicroPython bundles core modules directly inside the binary. Does not need any host directory mounted via WASI `preopen_dir`.
 - **Security Boundary**: Maximizes isolation. The WASI sandbox can run with zero directory capabilities, preventing filesystem leakage or escape.
 - **Runtime Requirement**: Requires wasmtime engine with exceptions proposal support (`wasmtime >= 49.0.0`).
+
+##### Interpreter Artifact: Import / Export Inspection
+
+Inspected using `wasmtime` Python SDK (`scripts/inspect_wasm.py`) on the exact binary whose SHA-256 is listed above.
+
+**Imports** (26 total):
+
+```text
+[micropython_wasm]::host_result_cap       (func (result i32))
+[micropython_wasm]::host_call             (func (param i32 i32 i32 i32 i32 i32) (result i32))
+[wasi_snapshot_preview1]::args_get        (func (param i32 i32) (result i32))
+[wasi_snapshot_preview1]::args_sizes_get  (func (param i32 i32) (result i32))
+[wasi_snapshot_preview1]::environ_get     (func (param i32 i32) (result i32))
+[wasi_snapshot_preview1]::environ_sizes_get (func (param i32 i32) (result i32))
+[wasi_snapshot_preview1]::clock_time_get  (func (param i32 i64 i32) (result i32))
+[wasi_snapshot_preview1]::fd_close        (func (param i32) (result i32))
+[wasi_snapshot_preview1]::fd_fdstat_get   (func (param i32 i32) (result i32))
+[wasi_snapshot_preview1]::fd_prestat_get  (func (param i32 i32) (result i32))
+[wasi_snapshot_preview1]::fd_prestat_dir_name (func (param i32 i32 i32) (result i32))
+[wasi_snapshot_preview1]::fd_read         (func (param i32 i32 i32 i32) (result i32))
+[wasi_snapshot_preview1]::fd_readdir      (func (param i32 i32 i32 i64 i32) (result i32))
+[wasi_snapshot_preview1]::fd_seek         (func (param i32 i64 i32 i32) (result i32))
+[wasi_snapshot_preview1]::fd_sync         (func (param i32) (result i32))
+[wasi_snapshot_preview1]::fd_write        (func (param i32 i32 i32 i32) (result i32))
+[wasi_snapshot_preview1]::path_create_directory (func (param i32 i32 i32) (result i32))
+[wasi_snapshot_preview1]::path_filestat_get (func (param i32 i32 i32 i32 i32) (result i32))
+[wasi_snapshot_preview1]::path_open       (func (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32))
+[wasi_snapshot_preview1]::path_readlink   (func (param i32 i32 i32 i32 i32 i32) (result i32))
+[wasi_snapshot_preview1]::path_remove_directory (func (param i32 i32 i32) (result i32))
+[wasi_snapshot_preview1]::path_rename     (func (param i32 i32 i32 i32 i32 i32) (result i32))
+[wasi_snapshot_preview1]::path_unlink_file (func (param i32 i32 i32) (result i32))
+[wasi_snapshot_preview1]::poll_oneoff     (func (param i32 i32 i32 i32) (result i32))
+[wasi_snapshot_preview1]::proc_exit       (func (param i32))
+[wasi_snapshot_preview1]::sched_yield     (func (result i32))
+```
+
+**Exports** (2 total):
+
+```text
+memory   (memory)
+_start   (func)
+```
+
+**Key observations from inspection**:
+- The binary imports **only** two non-WASI functions from its own `micropython_wasm` namespace: `host_result_cap` and `host_call`. These are the structured host-call bridge wired up by `_define_host_call()` in the Python SDK — no arbitrary host access is exposed.
+- The WASI imports cover standard I/O, environment, clock, and filesystem calls. All are satisfied by the `WasiConfig` (pipe-based stdio, zero preopened dirs) configured at runtime — no actual host filesystem access is granted.
+- The only export is `_start` (the WASI entry point) and the linear `memory`. There are no other exported functions the host could accidentally call.
 
 ##### Limitations of MicroPython for Plugin Authors:
 MicroPython is designed for microcontrollers and embedded environments. Plugin authors should be aware of the following trade-offs:
