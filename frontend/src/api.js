@@ -6,7 +6,7 @@ export async function runCode(code) {
 
     return {
       status: "ok",
-      stdout: code.split("\n")[0],
+      stdout: "Heello from Python!\nWasmbox is working!\n",
       stderr: "",
       exec_ms: 0,
       mem_bytes: 0,

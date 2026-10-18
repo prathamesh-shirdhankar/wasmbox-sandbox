@@ -1,4 +1,4 @@
-function OutputPanel({ output }) {
+function OutputPanel({ output = {} }) {
   const statusLabels = {
     ok: "Success",
     error: "Error",
