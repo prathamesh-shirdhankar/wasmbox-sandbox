@@ -63,6 +63,8 @@ The custom-section name is `wasmbox_script` (constant `CUSTOM_SECTION_NAME` in `
 
 `extract_script()` checks the WASM header, walks the sections, finds the custom section with the agreed name, and decodes the payload as UTF-8. It reports malformed, truncated, missing-section, or invalid UTF-8 artifacts as artifact errors.
 
+*Note on LEB128 Encoding (19 October 2026)*: The packaging utility uses standard unsigned LEB128 (`u32`) encoding. Each byte contributes 7 bits of value; the 8th bit (MSB `0x80`) indicates continuation. This ensures variable-length payload sizes are strictly compliant with the official WebAssembly binary specification.
+
 ## 5. Execution: `run_plugin(artifact)`
 
 Implemented in `backend/app/runtime/micropython_runner.py`.
