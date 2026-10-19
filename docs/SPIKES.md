@@ -422,13 +422,13 @@ MicroPython is designed for microcontrollers and embedded environments. Plugin a
 
 ---
 
-#### 3. Interim Notes (Day 3)
+#### 3. Interim Notes
 - MicroPython WASI emerged as the top candidate for Week 2.
-- Next step for Day 4: Investigate Wizer pre-initialization on MicroPython and finalize recommendations.
+- Next step for: Investigate Wizer pre-initialization on MicroPython and finalize recommendations.
 
 ---
 
-### Day 4: Wizer Pre-initialization & Final Spike Evaluation
+###  Wizer Pre-initialization & Final Spike Evaluation
 
 #### 1. Wizer Investigation (Time-box Findings)
 
@@ -452,13 +452,13 @@ MicroPython is designed for microcontrollers and embedded environments. Plugin a
 
 ---
 
-### Week 1 Retrospective & Test Isolation Verification (11 October 2026)
+### Week 1 Retrospective & Test Isolation Verification 
 
 - **Test Suite Health**: All Week 1 endpoint and contract unit tests pass under `pytest` with zero external network access.
 - **Filesystem Isolation**: Verified that the WebAssembly instance has no preopened host directories mapped via WASI, preventing arbitrary file read/write access.
 - **Contract Boundary**: Re-verified standard 5-field schema output consistency across benign runs and empty input rejections.
 
-### Memory Footprint Comparison (12 October 2026)
+### Memory Footprint Comparison 
 
 - **MicroPython WASI**: Initial WebAssembly memory pages allocate minimal linear memory (default 10 MiB ceiling verified sufficient for interpreter boot and standard user script execution).
 - **CPython WASI Comparison**: Full CPython runtime engines require substantially larger initial memory commitments (allocating 32–64 MiB just to map internal bytecode tables and dynamic runtime types).
