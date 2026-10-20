@@ -62,6 +62,19 @@ def test_run_handled_exception():
     assert data["mem_bytes"] == 0
 
 
+def test_run_syntax_error():
+    """Verify POST /run with syntax error returns error status and readable error message."""
+    response = client.post("/run", json={"code": "invalid syntax ("})
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["status"] == "error"
+    assert "SyntaxError" in data["stderr"]
+    assert data["stdout"] == ""
+    assert data["exec_ms"] == 0
+    assert data["mem_bytes"] == 0
+
+
 def test_run_missing_code_payload():
     """Verify POST /run without required 'code' field returns 422 Unprocessable Entity."""
     response = client.post("/run", json={})
@@ -117,6 +130,40 @@ def test_run_code_boundary_10k_chars():
     data = response.json()
     assert data["status"] == "ok"
     assert data["stderr"] == ""
+
+
+def test_run_code_10001_chars_is_rejected():
+    """Verify POST /run with exactly 10,001 characters is rejected."""
+    code_10001 = "a = 1\n" + ("#" * (10_001 - 6))
+    assert len(code_10001) == 10_001
+
+    response = client.post("/run", json={"code": code_10001})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "error"
+    assert "10000" in data["stderr"]
+    assert data["stdout"] == ""
+    assert data["exec_ms"] == 0
+    assert data["mem_bytes"] == 0
+
+
+def test_run_runner_raises_exception(monkeypatch):
+    """Verify POST /run returns a 5-field error response (not a 500) when the runner raises."""
+    import app.api.routes as routes_module
+
+    def _boom(code: str):
+        raise RuntimeError("simulated runner crash")
+
+    monkeypatch.setattr(routes_module, "run_code_fake", _boom)
+
+    response = client.post("/run", json={"code": 'print("hi")'})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "error"
+    assert "simulated runner crash" in data["stderr"]
+    assert data["stdout"] == ""
+    assert data["exec_ms"] == 0
+    assert data["mem_bytes"] == 0
 
 
 def test_cors_headers_present():
