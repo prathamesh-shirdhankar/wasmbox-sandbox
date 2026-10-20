@@ -50,10 +50,18 @@ Response:
 - `timeout`: the plugin ran too long and was stopped
 - `memory_exceeded`: the plugin used too much memory and was stopped
 
-## Week 1 note
+## Week 2 note
 
-`/run` is a **mock** this week. It always returns `status: "ok"` and a fake `stdout`.
-Real execution starts in Week 2. The shape of the response stays exactly the same.
+The five-field response shape is the same as Week 1. Real execution is now wired up.
+`exec_ms` and `mem_bytes` remain `0` until Week 3.
+
+## Input validation rules
+
+| Input | HTTP status | Response |
+|---|---|---|
+| `code` field missing from JSON body | **422** (FastAPI validation error) | FastAPI's default error body — no `stderr` field. **Sashmita: handle 422 separately from the five-field error response.** |
+| `code` is empty string or whitespace only | 200 | `{"status": "error", "stderr": "No code provided", "stdout": "", "exec_ms": 0, "mem_bytes": 0}` |
+| `code` exceeds 10,000 characters | 200 | `{"status": "error", "stderr": "Code exceeds maximum allowed size of 10000 characters ...", "stdout": "", "exec_ms": 0, "mem_bytes": 0}` |
 
 ## Changing this contract
 
@@ -65,6 +73,6 @@ Real execution starts in Week 2. The shape of the response stays exactly the sam
 
 ## Notes
 
-1. 
-2. 
-3. 
+1. The `code` field is required. A missing `code` returns HTTP 422 (FastAPI validation), which does **not** follow the five-field schema. Frontend must handle 422 separately.
+2. Empty or whitespace-only code returns a normal 200 with `status: "error"` and `stderr: "No code provided"`.
+3. Code longer than 10,000 characters is rejected before execution with `status: "error"` and a clear size message.

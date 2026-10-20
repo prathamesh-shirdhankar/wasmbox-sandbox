@@ -35,25 +35,42 @@ def test_health_endpoint():
     assert response.json() == {"ok": True}
 
 
-def test_run_mock_contract_shape():
-    """Verify POST /run accepts code and returns expected contract response."""
-    test_code = "print('Hello, WasmBox!')"
-    response = client.post("/run", json={"code": test_code})
-
+def test_run_print_hi():
+    """Verify POST /run with print('hi') returns ok status and 'hi\\n' in stdout."""
+    response = client.post("/run", json={"code": 'print("hi")'})
     assert response.status_code == 200
     data = response.json()
 
-    # Verify all expected keys are present
-    assert "status" in data
-    assert "stdout" in data
-    assert "stderr" in data
-    assert "exec_ms" in data
-    assert "mem_bytes" in data
-
-    # Verify exact Week 1 mock values
+    # All five fields present
     assert data["status"] == "ok"
-    assert data["stdout"] == f"[mock] received {len(test_code)} characters\n"
+    assert data["stdout"] == "hi\n"
     assert data["stderr"] == ""
+    assert data["exec_ms"] == 0
+    assert data["mem_bytes"] == 0
+
+
+def test_run_handled_exception():
+    """Verify POST /run with 1/0 returns error status and readable error message."""
+    response = client.post("/run", json={"code": "1/0"})
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["status"] == "error"
+    assert "ZeroDivisionError" in data["stderr"]
+    assert data["stdout"] == ""
+    assert data["exec_ms"] == 0
+    assert data["mem_bytes"] == 0
+
+
+def test_run_syntax_error():
+    """Verify POST /run with syntax error returns error status and readable error message."""
+    response = client.post("/run", json={"code": "invalid syntax ("})
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["status"] == "error"
+    assert "SyntaxError" in data["stderr"]
+    assert data["stdout"] == ""
     assert data["exec_ms"] == 0
     assert data["mem_bytes"] == 0
 
@@ -65,23 +82,88 @@ def test_run_missing_code_payload():
 
 
 def test_run_empty_code_payload():
-    """Verify POST /run with empty string gracefully returns mock response."""
+    """Verify POST /run with empty string returns status error and 'No code provided'."""
     response = client.post("/run", json={"code": ""})
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "ok"
-    assert data["stdout"] == "[mock] empty code received\n"
-    assert data["stderr"] == ""
+    assert data["status"] == "error"
+    assert data["stderr"] == "No code provided"
+    assert data["stdout"] == ""
+    assert data["exec_ms"] == 0
+    assert data["mem_bytes"] == 0
 
 
 def test_run_whitespace_code_payload():
-    """Verify POST /run with whitespace-only code gracefully returns mock response."""
+    """Verify POST /run with whitespace-only code returns status error and 'No code provided'."""
     response = client.post("/run", json={"code": "   \n\t  "})
     assert response.status_code == 200
     data = response.json()
+    assert data["status"] == "error"
+    assert data["stderr"] == "No code provided"
+    assert data["stdout"] == ""
+    assert data["exec_ms"] == 0
+    assert data["mem_bytes"] == 0
+
+
+def test_run_code_exceeding_10k_chars():
+    """Verify POST /run with code > 10,000 characters is rejected with clear error."""
+    oversized_code = "x = 1\n" + ("# comment\n" * 1200)
+    assert len(oversized_code) > 10_000
+
+    response = client.post("/run", json={"code": oversized_code})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "error"
+    assert "10000" in data["stderr"]
+    assert data["stdout"] == ""
+    assert data["exec_ms"] == 0
+    assert data["mem_bytes"] == 0
+
+
+def test_run_code_boundary_10k_chars():
+    """Verify POST /run with exactly 10,000 characters is accepted."""
+    code_exact_10k = "a = 1\n" + ("#" * (10_000 - 6))
+    assert len(code_exact_10k) == 10_000
+
+    response = client.post("/run", json={"code": code_exact_10k})
+    assert response.status_code == 200
+    data = response.json()
     assert data["status"] == "ok"
-    assert data["stdout"] == "[mock] empty code received\n"
     assert data["stderr"] == ""
+
+
+def test_run_code_10001_chars_is_rejected():
+    """Verify POST /run with exactly 10,001 characters is rejected."""
+    code_10001 = "a = 1\n" + ("#" * (10_001 - 6))
+    assert len(code_10001) == 10_001
+
+    response = client.post("/run", json={"code": code_10001})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "error"
+    assert "10000" in data["stderr"]
+    assert data["stdout"] == ""
+    assert data["exec_ms"] == 0
+    assert data["mem_bytes"] == 0
+
+
+def test_run_runner_raises_exception(monkeypatch):
+    """Verify POST /run returns a 5-field error response (not a 500) when the runner raises."""
+    import app.api.routes as routes_module
+
+    def _boom(code: str):
+        raise RuntimeError("simulated runner crash")
+
+    monkeypatch.setattr(routes_module, "run_code_fake", _boom)
+
+    response = client.post("/run", json={"code": 'print("hi")'})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "error"
+    assert "simulated runner crash" in data["stderr"]
+    assert data["stdout"] == ""
+    assert data["exec_ms"] == 0
+    assert data["mem_bytes"] == 0
 
 
 def test_cors_headers_present():
