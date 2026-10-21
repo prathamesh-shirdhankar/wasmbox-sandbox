@@ -151,10 +151,10 @@ def test_run_runner_raises_exception(monkeypatch):
     """Verify POST /run returns a 5-field error response (not a 500) when the runner raises."""
     import app.api.routes as routes_module
 
-    def _boom(code: str):
+    def _boom(*args, **kwargs):
         raise RuntimeError("simulated runner crash")
 
-    monkeypatch.setattr(routes_module, "run_code_fake", _boom)
+    monkeypatch.setattr(routes_module, "run_plugin", _boom)
 
     response = client.post("/run", json={"code": 'print("hi")'})
     assert response.status_code == 200

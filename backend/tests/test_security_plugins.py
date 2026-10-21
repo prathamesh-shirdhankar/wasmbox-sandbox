@@ -26,10 +26,21 @@ def test_plugin_file_exists_and_is_valid_python(name):
 # ---- Stubs: switch these on when the real /run exists ----
 
 
-@pytest.mark.skip(reason="Needs real /run (Week 2)")
 def test_benign_control_runs_ok():
-    # Expect: status "ok", stdout "hello from the control plugin\n"
-    pass
+    """Verify that a benign plugin executes cleanly with status 'ok' through real /run."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    source = (MALICIOUS_DIR / "benign_control.py").read_text(encoding="utf-8")
+    response = client.post("/run", json={"code": source})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["stdout"] == "hello from the control plugin\n"
+    assert data["stderr"] == ""
+    assert data["exec_ms"] == 0
+    assert data["mem_bytes"] == 0
 
 
 @pytest.mark.skip(reason="Needs real /run and the Mid-Project audit")
