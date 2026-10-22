@@ -2,12 +2,11 @@ import logging
 
 from fastapi import APIRouter
 from app.api.schemas import HealthResponse, RunRequest, RunResponse
-from app.api.fake_runner import run_code_fake
+from app.runtime.packaging import MAX_CODE_LENGTH, package_plugin
+from app.runtime.micropython_runner import run_plugin
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-MAX_CODE_LENGTH = 10_000
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -21,8 +20,8 @@ def run_code(payload: RunRequest) -> RunResponse:
     """
     Code execution endpoint adhering to API contract.
     Validates input (empty/whitespace and <= 10,000 chars) before running.
-    Delegates to runner; any unexpected runner exception is caught and returned
-    as a 5-field error response so the client never receives a bare 500.
+    Executes through the real pipeline: package_plugin(code) -> run_plugin(artifact).
+    Any unexpected runner exception is caught and returned as a 5-field error response.
     """
     code = payload.code
 
@@ -49,15 +48,24 @@ def run_code(payload: RunRequest) -> RunResponse:
             mem_bytes=0,
         )
 
-    # Delegate to runner — guard against unexpected runner exceptions
+    # Real execution pipeline: package_plugin -> run_plugin
     try:
-        return run_code_fake(code)
-    except Exception as exc:
+        artifact = package_plugin(code)
+        result = run_plugin(artifact.wasm_bytes)
+        return RunResponse(
+            status=result.status,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            exec_ms=0,
+            mem_bytes=0,
+        )
+    except Exception:
         logger.exception("Runner raised an unexpected exception")
         return RunResponse(
             status="error",
             stdout="",
-            stderr=f"Internal runner error: {exc}",
+            stderr="Internal runner error: execution failed unexpectedly",
             exec_ms=0,
             mem_bytes=0,
         )
+

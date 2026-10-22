@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from micropython_wasm import MicroPythonWasmError, run
 
@@ -17,8 +18,8 @@ INTERPRETER_PATH = (
     Path(__file__).resolve().parent / "artifacts" / "micropython-wasi.wasm"
 )
 
-# PLACEHOLDER: must match package_plugin (Vineet). Not agreed yet.
-SECTION_NAME = "wasmbox.script"
+# Custom section name matching package_plugin (Vineet).
+SECTION_NAME = "wasmbox_script"
 
 # Written to stderr by the wrapper when the user's script raises.
 ERROR_MARKER = "@@WASMBOX_ERROR@@"
@@ -58,7 +59,6 @@ def extract_script(artifact: bytes) -> str:
     if not artifact.startswith(WASM_HEADER):
         raise ArtifactError("Not a WASM artifact")
 
-    wanted = SECTION_NAME.encode("utf-8")
     pos = len(WASM_HEADER)
     while pos < len(artifact):
         section_id = artifact[pos]
@@ -72,7 +72,7 @@ def extract_script(artifact: bytes) -> str:
             name_end = name_start + name_len
             if name_end > end:
                 raise ArtifactError("Invalid section name")
-            if artifact[name_start:name_end] == wanted:
+            if artifact[name_start:name_end] == SECTION_NAME.encode("utf-8"):
                 try:
                     return artifact[name_end:end].decode("utf-8")
                 except UnicodeDecodeError as exc:
@@ -103,9 +103,14 @@ def _clean_error(stderr: str) -> str:
     return text.strip()
 
 
-def run_plugin(artifact: bytes) -> PluginResult:
+def run_plugin(artifact: bytes | Any) -> PluginResult:
+    if hasattr(artifact, "wasm_bytes"):
+        artifact_bytes = artifact.wasm_bytes
+    else:
+        artifact_bytes = artifact
+
     try:
-        script = extract_script(artifact)
+        script = extract_script(artifact_bytes)
     except ArtifactError as exc:
         return PluginResult("error", "", f"Invalid plugin artifact: {exc}")
 
