@@ -158,11 +158,11 @@ def test_custom_section_binary_layout_matches_pipeline_spec():
 
 
 def test_extract_script_raises_if_custom_section_missing():
-    """Verify extract_script raises ValueError if section name is not present."""
+    """Verify extract_script raises ValueError/ArtifactError if section name is not present."""
     from app.runtime.packaging import resolve_base_wasm
 
     base_bytes = resolve_base_wasm().read_bytes()
-    with pytest.raises(ValueError, match="Custom section 'wasmbox_script' not found"):
+    with pytest.raises(ValueError, match="Script section not found"):
         extract_script(base_bytes)
 
 

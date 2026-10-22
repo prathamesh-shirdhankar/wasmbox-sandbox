@@ -19,9 +19,7 @@ INTERPRETER_PATH = (
 )
 
 # Custom section name matching package_plugin (Vineet).
-# Supports both 'wasmbox_script' and 'wasmbox.script' for compatibility.
 SECTION_NAME = "wasmbox_script"
-SUPPORTED_SECTION_NAMES = (b"wasmbox_script", b"wasmbox.script")
 
 # Written to stderr by the wrapper when the user's script raises.
 ERROR_MARKER = "@@WASMBOX_ERROR@@"
@@ -74,7 +72,7 @@ def extract_script(artifact: bytes) -> str:
             name_end = name_start + name_len
             if name_end > end:
                 raise ArtifactError("Invalid section name")
-            if artifact[name_start:name_end] in SUPPORTED_SECTION_NAMES:
+            if artifact[name_start:name_end] == SECTION_NAME.encode("utf-8"):
                 try:
                     return artifact[name_end:end].decode("utf-8")
                 except UnicodeDecodeError as exc:

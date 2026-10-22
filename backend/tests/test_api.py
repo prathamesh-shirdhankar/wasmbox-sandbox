@@ -160,7 +160,7 @@ def test_run_runner_raises_exception(monkeypatch):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "error"
-    assert "simulated runner crash" in data["stderr"]
+    assert data["stderr"] == "Internal runner error: execution failed unexpectedly"
     assert data["stdout"] == ""
     assert data["exec_ms"] == 0
     assert data["mem_bytes"] == 0

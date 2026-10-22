@@ -14,7 +14,6 @@ MAX_CODE_LENGTH = 10_000
 CURRENT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = CURRENT_DIR.parents[2]
 ARTIFACT_WASM_PATH = CURRENT_DIR / "artifacts" / "micropython-wasi.wasm"
-DEFAULT_HELLO_WASM = REPO_ROOT / "plugins" / "benign" / "hello.wasm"
 
 
 @dataclass(frozen=True)
@@ -71,7 +70,8 @@ def decode_u32_leb128(data: bytes, offset: int = 0) -> Tuple[int, int]:
 def resolve_base_wasm(base_wasm_path: Optional[Path | str] = None) -> Path:
     """
     Resolve base WASM binary to embed the script into.
-    Prefers user-supplied path, then repository artifact, then benign/hello.wasm.
+    Prefers user-supplied path, otherwise requires official repository artifact.
+    Fails loudly if the official interpreter artifact is missing.
     """
     if base_wasm_path is not None:
         p = Path(base_wasm_path)
@@ -82,11 +82,8 @@ def resolve_base_wasm(base_wasm_path: Optional[Path | str] = None) -> Path:
     if ARTIFACT_WASM_PATH.is_file():
         return ARTIFACT_WASM_PATH
 
-    if DEFAULT_HELLO_WASM.is_file():
-        return DEFAULT_HELLO_WASM
-
     raise FileNotFoundError(
-        f"No base WASM found at {ARTIFACT_WASM_PATH} or {DEFAULT_HELLO_WASM}"
+        f"Official interpreter artifact not found at {ARTIFACT_WASM_PATH}"
     )
 
 
@@ -138,34 +135,5 @@ def package_plugin(
     )
 
 
-def extract_script(
-    wasm_bytes: bytes,
-    section_name: str = CUSTOM_SECTION_NAME,
-) -> str:
-    """
-    Extract embedded Python source from the custom section of a packaged WASM binary.
-    """
-    if len(wasm_bytes) < 8 or wasm_bytes[:4] != b"\x00asm":
-        raise ValueError("Invalid WASM binary: incorrect magic header")
-
-    target_bytes = section_name.encode("utf-8")
-    offset = 8
-
-    while offset < len(wasm_bytes):
-        section_id = wasm_bytes[offset]
-        offset += 1
-        sec_len, leb_bytes = decode_u32_leb128(wasm_bytes, offset)
-        offset += leb_bytes
-        sec_end = offset + sec_len
-
-        if section_id == 0:
-            name_len, name_leb_bytes = decode_u32_leb128(wasm_bytes, offset)
-            name_start = offset + name_leb_bytes
-            name_end = name_start + name_len
-            name = wasm_bytes[name_start:name_end]
-            if name == target_bytes:
-                return wasm_bytes[name_end:sec_end].decode("utf-8")
-
-        offset = sec_end
-
-    raise ValueError(f"Custom section '{section_name}' not found in WASM binary")
+# Re-export extract_script from micropython_runner so single implementation is used across codebase
+from app.runtime.micropython_runner import extract_script

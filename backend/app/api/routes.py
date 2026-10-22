@@ -2,13 +2,11 @@ import logging
 
 from fastapi import APIRouter
 from app.api.schemas import HealthResponse, RunRequest, RunResponse
-from app.runtime.packaging import package_plugin
+from app.runtime.packaging import MAX_CODE_LENGTH, package_plugin
 from app.runtime.micropython_runner import run_plugin
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-MAX_CODE_LENGTH = 10_000
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -61,12 +59,12 @@ def run_code(payload: RunRequest) -> RunResponse:
             exec_ms=0,
             mem_bytes=0,
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Runner raised an unexpected exception")
         return RunResponse(
             status="error",
             stdout="",
-            stderr=f"Internal runner error: {exc}",
+            stderr="Internal runner error: execution failed unexpectedly",
             exec_ms=0,
             mem_bytes=0,
         )
