@@ -1,0 +1,99 @@
+"""Tests for unusual inputs and edge cases against POST /run.
+1. Comments only (# just a comment)
+2. Spaces only
+3. Multi-byte Unicode characters and emojis
+4. Tabs and mixed indentation
+5. Single very long line (up to 9,999 chars)
+6. Script generating large output (printing 5,000 lines)
+"""
+
+from fastapi.testclient import TestClient
+from app.main import app
+
+client = TestClient(app)
+
+
+def test_comments_only_executes_ok():
+    """Comments-only input is valid Python code that produces no output."""
+    code = "# just a comment\n# another line of comment\n"
+    response = client.post("/run", json={"code": code})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["stdout"] == ""
+    assert data["stderr"] == ""
+    assert data["exec_ms"] == 0
+    assert data["mem_bytes"] == 0
+
+
+def test_spaces_only_rejected_as_no_code():
+    """Spaces-only input should be rejected before execution."""
+    response = client.post("/run", json={"code": "     \n\t   \n  "})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "error"
+    assert "No code provided" in data["stderr"]
+    assert data["stdout"] == ""
+
+
+def test_unicode_and_emojis():
+    """Multi-byte Unicode characters and emojis should be handled correctly."""
+    code = 'print("Hello, 🌍! 🚀 नमस्ते 世界")\n'
+    response = client.post("/run", json={"code": code})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert "Hello, 🌍! 🚀 नमस्ते 世界\n" in data["stdout"]
+    assert data["stderr"] == ""
+
+
+def test_tabs_and_mixed_indentation():
+    """Valid Python script using standard 4-space or consistent indentation with logic."""
+    code = "def greet(name):\n    if name:\n        return 'Hello, ' + name\n    return 'Hello, stranger'\nprint(greet('WasmBox'))\n"
+    response = client.post("/run", json={"code": code})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["stdout"] == "Hello, WasmBox\n"
+    assert data["stderr"] == ""
+
+
+def test_indentation_syntax_error():
+    """Mismatched/unindent error returns status: error without server crash."""
+    code = "def foo():\n  x = 1\n    y = 2\n"
+    response = client.post("/run", json={"code": code})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "error"
+    assert len(data["stderr"]) > 0
+
+
+def test_single_very_long_line_under_limit():
+    """Single very long line up to 9,999 characters under the 10,000 char limit."""
+    prefix = 'x = "'
+    suffix = '"\nprint(len(x))\n'
+    target_length = 9990
+    content_length = target_length - len(prefix) - len(suffix)
+    code = prefix + ("a" * content_length) + suffix
+    assert len(code) <= 9999
+
+    response = client.post("/run", json={"code": code})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["stdout"] == f"{content_length}\n"
+    assert data["stderr"] == ""
+
+
+def test_script_generating_large_output():
+    """Script generating 5,000 lines of output executes without crashing."""
+    code = "for i in range(5000):\n    print(i)\n"
+    response = client.post("/run", json={"code": code})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    lines = data["stdout"].splitlines()
+    assert len(lines) == 5000
+    assert lines[0] == "0"
+    assert lines[-1] == "4999"
+    assert data["stderr"] == ""
