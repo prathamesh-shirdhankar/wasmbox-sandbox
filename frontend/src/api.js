@@ -1,4 +1,4 @@
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 export async function runCode(code) {
   if (USE_MOCK) {
@@ -6,7 +6,7 @@ export async function runCode(code) {
 
     return {
       status: "ok",
-      stdout: "Heello from Python!\nWasmbox is working!\n",
+      stdout: "Hello from Python!\nWasmbox is working!\n",
       stderr: "",
       exec_ms: 0,
       mem_bytes: 0,
