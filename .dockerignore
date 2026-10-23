@@ -1,0 +1,31 @@
+# Version control
+.git
+.gitignore
+
+# Python environments and caches
+.venv
+venv
+ENV
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+
+# Node / Frontend build artifacts
+node_modules
+dist
+.next
+
+# Environment variables and secrets
+.env
+.env.*
+*.env
+
+# IDE / Editor folders
+.vscode
+.idea
+
+# OS files
+.DS_Store
+Thumbs.db
