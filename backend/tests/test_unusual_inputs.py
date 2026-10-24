@@ -53,25 +53,47 @@ def test_unicode_and_emojis():
     assert data["stderr"] == ""
 
 
-def test_tabs_and_mixed_indentation():
-    """Valid Python script using standard 4-space or consistent indentation with logic."""
-    code = "def greet(name):\n    if name:\n        return 'Hello, ' + name\n    return 'Hello, stranger'\nprint(greet('WasmBox'))\n"
+def test_tab_indentation_executes_ok():
+    """Valid Python script using tab characters ('\\t') for indentation executes cleanly."""
+    code = "def greet(name):\n\tif name:\n\t\treturn 'Hello, ' + name\n\treturn 'Hello, stranger'\nprint(greet('WasmBox'))\n"
     response = client.post("/run", json={"code": code})
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
     assert data["stdout"] == "Hello, WasmBox\n"
     assert data["stderr"] == ""
+    assert data["exec_ms"] == 0
+    assert data["mem_bytes"] == 0
+
+
+def test_mixed_tabs_and_spaces_indentation_error():
+    """
+    Mixing tabs and spaces in Python indentation returns an IndentationError / status: error.
+    MicroPython parser returns 'IndentationError: unindent doesn't match any outer indent level'
+    (standard CPython gives TabError: inconsistent use of tabs and spaces in indentation).
+    """
+    code = "def foo():\n\tx = 1\n    return x\nprint(foo())\n"
+    response = client.post("/run", json={"code": code})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "error"
+    assert "IndentationError" in data["stderr"] or "TabError" in data["stderr"]
+    assert data["stdout"] == ""
+    assert data["exec_ms"] == 0
+    assert data["mem_bytes"] == 0
 
 
 def test_indentation_syntax_error():
-    """Mismatched/unindent error returns status: error without server crash."""
+    """Mismatched/unexpected indentation returns status: error without server crash."""
     code = "def foo():\n  x = 1\n    y = 2\n"
     response = client.post("/run", json={"code": code})
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "error"
     assert len(data["stderr"]) > 0
+    assert data["stdout"] == ""
+    assert data["exec_ms"] == 0
+    assert data["mem_bytes"] == 0
 
 
 def test_single_very_long_line_under_limit():
