@@ -151,19 +151,24 @@ def test_run_runner_raises_exception(monkeypatch):
     """Verify POST /run returns a 5-field error response (not a 500) when the runner raises."""
     import app.api.routes as routes_module
 
+    original_run_plugin = routes_module.run_plugin
+
     def _boom(*args, **kwargs):
         raise RuntimeError("simulated runner crash")
 
     monkeypatch.setattr(routes_module, "run_plugin", _boom)
 
-    response = client.post("/run", json={"code": 'print("hi")'})
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "error"
-    assert data["stderr"] == "Internal runner error: execution failed unexpectedly"
-    assert data["stdout"] == ""
-    assert data["exec_ms"] == 0
-    assert data["mem_bytes"] == 0
+    try:
+        response = client.post("/run", json={"code": 'print("hi")'})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "error"
+        assert data["stderr"] == "Internal runner error: execution failed unexpectedly"
+        assert data["stdout"] == ""
+        assert data["exec_ms"] == 0
+        assert data["mem_bytes"] == 0
+    finally:
+        routes_module.run_plugin = original_run_plugin
 
 
 def test_cors_headers_present():
