@@ -22,7 +22,31 @@ export async function runCode(code) {
       body: JSON.stringify({ code }),
     });
 
-    return await response.json();
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      let message = "Request failed. Please try again.";
+
+      if (response.status === 422) {
+        message =
+          data.detail?.[0]?.msg ||
+          data.detail ||
+          "Invalid request. Please check your Python code.";
+      } else if (response.status >= 500) {
+        message = "Server error. Please try again later.";
+      }
+
+      return {
+        status: "error",
+        stdout: data.stdout || "",
+        stderr:
+          typeof message === "string" ? message : JSON.stringify(message),
+        exec_ms: data.exec_ms || 0,
+        mem_bytes: data.mem_bytes || 0,
+      };
+    }
+
+    return data;
   } catch (error) {
     return {
       status: "error",
