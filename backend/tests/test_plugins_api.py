@@ -102,3 +102,41 @@ def test_save_plugin_missing_field_gives_422():
     """Verify missing field in request body returns 422 Unprocessable Entity."""
     res = client.post("/plugins", json={"name": "only_name"})
     assert res.status_code == 422
+
+
+def test_trigger_webhook_executes_saved_plugin():
+    """Verify POST /webhooks/{id} executes the stored plugin and returns standard 5-field contract."""
+    save_res = client.post("/plugins", json={"name": "greeting", "code": "print('hi')"})
+    assert save_res.status_code == 200
+    plugin_id = save_res.json()["id"]
+
+    res = client.post(f"/webhooks/{plugin_id}")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "ok"
+    assert data["stdout"] == "hi\n"
+    assert data["stderr"] == ""
+    assert data["exec_ms"] == 0
+    assert data["mem_bytes"] == 0
+
+
+def test_trigger_webhook_unknown_id_returns_404():
+    """Verify POST /webhooks/{id} returns 404 for non-existent plugin id."""
+    res = client.post("/webhooks/9999")
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Plugin not found"
+
+
+def test_trigger_webhook_handles_runtime_error():
+    """Verify webhook execution captures guest errors without crashing server."""
+    save_res = client.post("/plugins", json={"name": "div_zero", "code": "1 / 0"})
+    assert save_res.status_code == 200
+    plugin_id = save_res.json()["id"]
+
+    res = client.post(f"/webhooks/{plugin_id}")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "error"
+    assert "ZeroDivisionError" in data["stderr"]
+    assert data["stdout"] == ""
+

@@ -7,6 +7,8 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.api.routes import run_code
+from app.api.schemas import RunRequest, RunResponse
 from app.api.storage import get_plugin, list_plugins, save_plugin
 from app.runtime.packaging import MAX_CODE_LENGTH
 
@@ -82,3 +84,18 @@ def get_single_plugin(plugin_id: int) -> PluginDetailResponse:
         name=plugin["name"],
         code=plugin["code"],
     )
+
+
+@router.post("/webhooks/{plugin_id}", response_model=RunResponse)
+def trigger_webhook(plugin_id: int) -> RunResponse:
+    """
+    Execute a saved plugin via webhook (Task 3).
+    Reuses existing run_code to ensure uniform safety checks and response structure.
+    """
+    plugin = get_plugin(plugin_id)
+    if plugin is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Plugin not found",
+        )
+    return run_code(RunRequest(code=plugin["code"]))
