@@ -45,7 +45,7 @@ def test_run_print_hi():
     assert data["status"] == "ok"
     assert data["stdout"] == "hi\n"
     assert data["stderr"] == ""
-    assert data["exec_ms"] == 0
+    assert data["exec_ms"] > 0
     assert data["mem_bytes"] == 0
 
 
@@ -58,7 +58,7 @@ def test_run_handled_exception():
     assert data["status"] == "error"
     assert "ZeroDivisionError" in data["stderr"]
     assert data["stdout"] == ""
-    assert data["exec_ms"] == 0
+    assert data["exec_ms"] > 0
     assert data["mem_bytes"] == 0
 
 
@@ -71,7 +71,7 @@ def test_run_syntax_error():
     assert data["status"] == "error"
     assert "SyntaxError" in data["stderr"]
     assert data["stdout"] == ""
-    assert data["exec_ms"] == 0
+    assert data["exec_ms"] > 0
     assert data["mem_bytes"] == 0
 
 
