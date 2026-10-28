@@ -8,3 +8,5 @@
 | 4 | `1/0` | Division-by-zero error | Error displayed | PASS |
 | 5 | Empty code | Ask for Python code | Prompt displayed | PASS |
 | 6 | `for i in range(3): print(i)` | Output: 0, 1, 2 | Output displayed | PASS |
+| 7 | Backend unavailable: run `print("hi")` with backend stopped | Friendly server-unavailable message; UI does not crash | Not tested yet | Pending |
+| 8 | Long valid Python script under 10,000 characters | UI handles the response without crashing | Not tested yet | Pending |

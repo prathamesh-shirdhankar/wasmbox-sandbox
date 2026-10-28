@@ -20,15 +20,17 @@ function OutputPanel({ output = {} }) {
         <pre>{output.stdout || "No output yet."}</pre>
       </div>
 
-      <div style={styles.errorBox}>
-        <h3>stderr</h3>
-        <pre>{output.stderr || "No errors."}</pre>
-      </div>
+      {output.stderr && (
+        <div style={styles.errorBox}>
+          <h3>stderr</h3>
+          <pre>{output.stderr}</pre>
+        </div>
+      )}
 
-      {(output.exec_ms !== undefined || output.mem_bytes !== undefined) && (
+      {(output.exec_ms !== undefined ||
+        output.mem_bytes !== undefined) && (
         <small>
-          Execution time: {output.exec_ms ?? 0} ms | Memory:{" "}
-          {output.mem_bytes ?? 0} bytes
+          Execution time: {output.exec_ms ?? 0} ms | Memory: not measured yet
         </small>
       )}
     </section>

@@ -7,4 +7,4 @@ npm run dev
 npm run build
 
 ## Screenshot
-![Python output](<Screenshot 2026-10-23 123337-1.png>)
+![Python Output](./Screenshot%202026-10-23%20123337-1.png)
