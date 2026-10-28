@@ -1,7 +1,7 @@
 # WasmBox: WebAssembly Design Report
 
-**Date:** 28 October 2026  
-**Scope:** Architecture, isolation approach, runtime limits, trade-offs, and current evidence.  
+**Date:** 28 October 2026
+**Scope:** Architecture, isolation approach, runtime limits, trade-offs, and current evidence.
 **Status note:** The runtime-limits and security-audit changes described here have been tested locally and are in pull requests for review; verify their merge status before treating them as part of `main`.
 
 ## 1. What WebAssembly and WASI provide
