@@ -6,13 +6,13 @@ This report documents the performance, throughput, and latency characteristics o
 
 ## 1. Test Environment & Hardware Specifications
 
-All benchmark runs were executed on the developer workstation using the automated test suite in [`backend/scripts/load_test.py`](file:///d:/intership%20project/New%20folder/wasmbox-sandbox/backend/scripts/load_test.py).
+All benchmark runs were executed on the developer workstation using the automated test suite in [`backend/scripts/load_test.py`]
 
 | Specification | Value |
 | :--- | :--- |
-| **Processor (CPU)** | 13th Gen Intel(R) Core(TM) i5-1335U (10 Cores: 2 Performance + 8 Efficient, 12 Logical Threads) |
-| **Installed RAM** | 16.0 GB (15.69 GB visible) |
-| **Operating System** | Microsoft Windows 11 Home Single Language (64-bit, Build 10.0.26300) |
+| **Processor (CPU)** | 13th Gen Intel(R) Core(TM) i5|
+| **Installed RAM** | 16.0 GB  |
+| **Operating System** | Microsoft Windows 11  |
 | **Python Version** | 3.11.9 |
 | **WebAssembly Engine** | `wasmtime==49.0.0` |
 | **Interpreter Binary** | MicroPython WASI (`micropython-wasi.wasm`, 362 KB) |
@@ -61,7 +61,7 @@ During concurrent multi-threading tests within a single Python process, `wasmtim
 2. **Horizontal Autoscaling (Kubernetes Pods)**:
    - In containerized deployments (Docker), horizontal pod autoscalers (HPA) targeting CPU utilization (~70%) distribute bursts across multiple isolated container instances.
 3. **Wizer Pre-Initialization / Ahead-of-Time Snapshots**:
-   - As documented in [`docs/SPIKES.md`](file:///d:/intership%20project/New%20folder/wasmbox-sandbox/docs/SPIKES.md), pre-initializing the MicroPython heap with Wizer can cut cold-start time down from ~125 ms to under ~15 ms, which would increase per-core throughput by up to 8x.
+   - As documented in [`docs/SPIKES.md`] pre-initializing the MicroPython heap with Wizer can cut cold-start time down from ~125 ms to under ~15 ms, which would increase per-core throughput by up to 8x.
 
 ---
 
