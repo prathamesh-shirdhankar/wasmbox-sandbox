@@ -1,4 +1,4 @@
-﻿# Spikes
+# Spikes
 
 Short, time-boxed investigations. Write what you tried, the exact commands and output, and a recommendation.
 
@@ -662,3 +662,57 @@ Finding: `micropython_wasm.run()` creates an engine and compiles the interpreter
 Not optimized in Week 2. Caching the compiled module means replacing `micropython_wasm.run()` with our own runner and re-creating its fuel, epoch, memory and no-directory settings, which is security-sensitive. The package's session API reuses state between runs, which is not acceptable for multiple tenants without further study.
 
 Week 3 implication (measured): the wall-time timer in `run()` starts before `Module.from_file` (source lines 680-687), so the timeout also covers compilation. Probe with a benign `print("hi")`, one try per value: `wall_timeout_seconds` 1.0 gave `ok`, 0.3 gave `ok`, 0.05 raised `guest trapped: wasm trap: interrupt`. A script that does nothing was interrupted at 50 ms, so the 50 ms target cannot be met by `micropython_wasm.run()` as it is. Meeting it needs a module that is compiled once and reused, which means a runner of our own that recreates the package's fuel, epoch, memory and no-directory settings. That is security-sensitive, so it was not attempted in Week 2. The package's session API reuses state between runs, which is not acceptable for multiple tenants without further study. The probe was run once per value on one laptop, so the exact threshold between 0.05 s and 0.3 s is not known.
+
+### Runtime limits and API timing (28 October 2026)
+
+#### Configuration
+
+The runner now uses explicit default limits:
+
+- Guest memory ceiling: 10 MiB (10 * 1024 * 1024 bytes).
+- WebAssembly fuel budget: 20,000,000.
+- Wall-clock timeout: 1.0 second.
+- Tests can pass smaller limits to `run_plugin` without changing the defaults.
+
+The 10 MiB setting allowed the benign `print("hi")` diagnostic to complete.
+This is a startup check, not proof of the memory behavior of every script.
+
+#### Timeout and fuel behavior
+
+The installed `micropython-wasm` 0.1a2 package produced these observed errors:
+
+- Wall-clock interruption: `guest trapped: wasm trap: interrupt`
+- Fuel exhaustion: `guest trapped: wasm trap: all fuel consumed by WebAssembly`
+
+The runner maps these resource-limit failures to `status: timeout` with readable
+messages. Ordinary Python exceptions remain `status: error`.
+
+A 50 ms probe did not allow a benign `print("hi")` run to complete because the
+timeout includes engine/module startup. The 50 ms target therefore remains unmet.
+The memory-bomb test was intentionally not run.
+
+#### API execution timing
+
+Five successful `POST /run` requests executed `print("hi")` on the development
+machine. Each response had HTTP 200, `status: ok`, and `mem_bytes: 0`.
+
+| Run | exec_ms |
+|---:|---:|
+| 1 | 242.43 |
+| 2 | 284.23 |
+| 3 | 197.51 |
+| 4 | 207.61 |
+| 5 | 198.75 |
+| Median | 207.61 |
+| Minimum | 197.51 |
+| Maximum | 284.23 |
+
+These five measurements are from one machine and are not a general performance
+benchmark.
+
+`exec_ms` uses a monotonic timer around `micropython_wasm.run()`. It includes the
+runner call's engine/module startup and guest execution. Artifact packaging and
+script extraction happen before the timer starts, so they are excluded.
+
+`mem_bytes` remains zero as a placeholder. Actual guest memory usage is not
+measured; the API and documentation must not describe zero as measured usage.

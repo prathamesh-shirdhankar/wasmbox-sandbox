@@ -39,7 +39,7 @@ def test_benign_control_runs_ok():
     assert data["status"] == "ok"
     assert data["stdout"] == "hello from the control plugin\n"
     assert data["stderr"] == ""
-    assert data["exec_ms"] == 0
+    assert data["exec_ms"] > 0
     assert data["mem_bytes"] == 0
 
 
@@ -73,13 +73,13 @@ def test_open_socket_is_blocked():
     assert data["stderr"].strip(), data
 
 
-@pytest.mark.skip(reason="Needs the 50 ms timeout (Week 3)")
+@pytest.mark.skip(reason="50 ms is not reachable with this runner; see docs/SPIKES.md")
 def test_infinite_loop_times_out():
     # Expect: status "timeout" after about 50 ms
     pass
 
 
-@pytest.mark.skip(reason="Needs the memory cap (Week 3)")
+@pytest.mark.skip(reason="Memory usage is not measured; memory-bomb test intentionally not run")
 def test_memory_bomb_is_stopped():
     # Expect: status "memory_exceeded"
     pass
