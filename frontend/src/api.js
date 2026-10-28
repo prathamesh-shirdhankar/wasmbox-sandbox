@@ -1,4 +1,4 @@
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 export async function runCode(code) {
   if (USE_MOCK) {
@@ -6,7 +6,7 @@ export async function runCode(code) {
 
     return {
       status: "ok",
-      stdout: code.split("\n")[0],
+      stdout: "Hello from Python!\nWasmbox is working!\n",
       stderr: "",
       exec_ms: 0,
       mem_bytes: 0,
@@ -22,7 +22,38 @@ export async function runCode(code) {
       body: JSON.stringify({ code }),
     });
 
-    return await response.json();
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      let message = "Request failed. Please try again.";
+
+      if (response.status === 422) {
+        const detail = data.detail?.[0]?.msg || data.detail;
+
+        message = detail
+          ? `Invalid request: ${
+              typeof detail === "string"
+                ? detail
+                : JSON.stringify(detail)
+            }`
+          : "Invalid request";
+      } else if (response.status >= 500) {
+        message = "Server error. Please try again later.";
+      }
+
+      return {
+        status: "error",
+        stdout: data.stdout || "",
+        stderr:
+          typeof message === "string"
+            ? message
+            : JSON.stringify(message),
+        exec_ms: data.exec_ms || 0,
+        mem_bytes: data.mem_bytes || 0,
+      };
+    }
+
+    return data;
   } catch (error) {
     return {
       status: "error",
