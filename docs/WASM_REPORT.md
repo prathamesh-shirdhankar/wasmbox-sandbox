@@ -2,8 +2,10 @@
 
 **Date:** 28 October 2026
 **Scope:** Architecture, isolation approach, runtime limits, trade-offs, and current evidence.
-**Status note:** The runtime-limits and security-audit changes described here have been tested locally and are in pull requests for review; verify their merge status before treating them as part of `main`.
-
+**Status note:** The runtime-limits and security-audit changes are merged
+into `main`. The security observations in this report apply to the specific
+tests and revisions documented in `docs/SECURITY.md`; they are not a
+comprehensive security certification.
 ## 1. What WebAssembly and WASI provide
 
 WebAssembly (Wasm) is a portable bytecode format executed by a WebAssembly runtime. Its execution model provides a sandbox boundary: a module cannot directly access arbitrary host resources through ordinary Wasm instructions. Access to external functions and resources depends on interfaces supplied by the embedding runtime. The WebAssembly security overview emphasizes that the embedding environment's policies are part of the effective security model ([WebAssembly security](https://webassembly.org/docs/security/)).
@@ -79,7 +81,7 @@ The current design choices are:
 3. Validate empty input and enforce a maximum source length of 10,000 characters before packaging.
 4. Apply explicit fuel, wall-clock, and guest-memory limits, and report timeout traps using the agreed API status.
 5. Return execution time through `exec_ms`, while leaving `mem_bytes` as an explicitly unmeasured placeholder.
-6. Keep host filesystem/network capabilities narrow and verify concrete behavior with API-level tests rather than claiming that the word “sandbox” alone proves safety.
+6. Keep host filesystem and network capabilities narrow, and verify concrete behavior with API-level tests rather than treating the word "sandbox" as proof of isolation.
 
 Remaining limitations include the unmet 50 ms target, unmeasured memory consumption, a small number of security probes rather than an exhaustive audit, and timing measurements from a single machine. These results support a working prototype and a transparent set of limits; they do not constitute a complete security certification or production-readiness assessment.
 
