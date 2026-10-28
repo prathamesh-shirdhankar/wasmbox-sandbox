@@ -28,10 +28,15 @@ export async function runCode(code) {
       let message = "Request failed. Please try again.";
 
       if (response.status === 422) {
-        message =
-          data.detail?.[0]?.msg ||
-          data.detail ||
-          "Invalid request. Please check your Python code.";
+        const detail = data.detail?.[0]?.msg || data.detail;
+
+        message = detail
+          ? `Invalid request: ${
+              typeof detail === "string"
+                ? detail
+                : JSON.stringify(detail)
+            }`
+          : "Invalid request";
       } else if (response.status >= 500) {
         message = "Server error. Please try again later.";
       }
@@ -40,7 +45,9 @@ export async function runCode(code) {
         status: "error",
         stdout: data.stdout || "",
         stderr:
-          typeof message === "string" ? message : JSON.stringify(message),
+          typeof message === "string"
+            ? message
+            : JSON.stringify(message),
         exec_ms: data.exec_ms || 0,
         mem_bytes: data.mem_bytes || 0,
       };
