@@ -7,7 +7,92 @@ The web server receives requests from the frontend or external clients and orche
 ## Endpoints
 
 - `GET /health`: Healthcheck endpoint returning `{"ok": true}`.
-- `POST /run`: Accepts JSON payload `{"code": "..."}` and returns execution status, stdout, and stderr conforming to `docs/API_CONTRACT.md` (`exec_ms` and `mem_bytes` are always 0 until Week 3).
+- `POST /run`: Accepts JSON payload `{"code": "..."}` and returns execution status, stdout, and stderr conforming to `docs/API_CONTRACT.md`.
+- `POST /plugins`: Saves a named plugin script to SQLite database.
+- `GET /plugins`: Returns an array of all saved plugins (`id`, `name`, `created_at`).
+- `GET /plugins/{id}`: Retrieves full details of a specific plugin including source code.
+- `POST /webhooks/{id}`: Executes a saved plugin via webhook and returns the standard 5-field execution contract.
+
+## Saving Plugins and Webhooks
+
+The API provides persistent plugin storage powered by SQLite and simulated webhook execution.
+
+### 1. Save a Plugin (`POST /plugins`)
+Saves a Python script under a designated name. Enforces non-empty name (max 100 chars) and code length limits ($\le$ 10,000 characters).
+
+```bash
+curl -X POST http://localhost:8000/plugins \
+  -H "Content-Type: application/json" \
+  -d '{"name": "hello_world", "code": "print(\"Hello from WasmBox!\")"}'
+```
+
+**Response (HTTP 200 OK):**
+```json
+{
+  "id": 1,
+  "name": "hello_world",
+  "code": "print(\"Hello from WasmBox!\")"
+}
+```
+
+### 2. List All Plugins (`GET /plugins`)
+Returns metadata for all registered plugins.
+
+```bash
+curl http://localhost:8000/plugins
+```
+
+**Response (HTTP 200 OK):**
+```json
+[
+  {
+    "id": 1,
+    "name": "hello_world",
+    "created_at": "2026-10-28 10:15:30"
+  }
+]
+```
+
+### 3. Retrieve Single Plugin (`GET /plugins/{id}`)
+Fetches complete plugin source code by database ID. Returns HTTP 404 if not found.
+
+```bash
+curl http://localhost:8000/plugins/1
+```
+
+**Response (HTTP 200 OK):**
+```json
+{
+  "id": 1,
+  "name": "hello_world",
+  "code": "print(\"Hello from WasmBox!\")"
+}
+```
+
+### 4. Trigger Webhook (`POST /webhooks/{id}`)
+Simulates a webhook trigger: looks up the plugin by ID, feeds the stored code through the sandboxed WASM execution pipeline, and returns the standard 5-field execution contract. Returns HTTP 404 if the plugin ID does not exist.
+
+```bash
+curl -X POST http://localhost:8000/webhooks/1
+```
+
+**Response (HTTP 200 OK):**
+```json
+{
+  "status": "ok",
+  "stdout": "Hello from WasmBox!\n",
+  "stderr": "",
+  "exec_ms": 204.15,
+  "mem_bytes": 0
+}
+```
+
+### Storage Architecture & Guarantees
+- **SQLite Engine**: Stores plugins in `backend/wasmbox_plugins.db` with indexed primary keys.
+- **Connection Isolation**: Uses a dedicated SQLite connection per request with context management (`with sqlite3.connect(...) as conn:`), preventing thread-contention and lock starvation.
+- **SQL Injection Prevention**: All queries strictly use parameterized statements (`?`).
+- **Version Control Safety**: Database files (`*.db`, `*.sqlite`, `*.sqlite3`) are excluded via `.gitignore`.
+
 
 ## How `/run` Works
 
