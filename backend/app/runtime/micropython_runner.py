@@ -7,11 +7,15 @@ and the interpreter executes it at run time (see docs/PIPELINE.md).
 from __future__ import annotations
 
 import re
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from micropython_wasm import MicroPythonWasmError, run
+
+_RUNNER_LOCK = threading.Lock()
 
 # Always run the repo-managed interpreter, never bytes supplied by a caller.
 INTERPRETER_PATH = (
@@ -24,6 +28,12 @@ SECTION_NAME = "wasmbox_script"
 # Written to stderr by the wrapper when the user's script raises.
 ERROR_MARKER = "@@WASMBOX_ERROR@@"
 
+# Explicit per-run resource limits. The 10 MiB memory ceiling was verified to
+# start the interpreter for a benign print("hi") probe on the development host.
+DEFAULT_MEMORY_BYTES = 10 * 1024 * 1024
+DEFAULT_FUEL = 20_000_000
+DEFAULT_WALL_TIMEOUT_SECONDS = 1.0
+
 WASM_HEADER = b"\x00asm\x01\x00\x00\x00"
 
 
@@ -33,9 +43,10 @@ class ArtifactError(ValueError):
 
 @dataclass(frozen=True)
 class PluginResult:
-    status: str  # "ok" or "error" in Week 2
+    status: str  # "ok", "error", or "timeout"
     stdout: str
     stderr: str
+    exec_ms: float = 0.0
 
 
 def _read_leb128(data: bytes, pos: int) -> tuple[int, int]:
@@ -103,7 +114,38 @@ def _clean_error(stderr: str) -> str:
     return text.strip()
 
 
-def run_plugin(artifact: bytes | Any) -> PluginResult:
+def _elapsed_ms(started_at: float) -> float:
+    """Elapsed wall-clock milliseconds for the runner invocation."""
+    return round((time.perf_counter() - started_at) * 1000, 2)
+
+
+def _timeout_message(exception_text: str) -> str | None:
+    """Map the known micropython-wasm trap text to readable timeout reasons."""
+    normalized = exception_text.lower()
+    if "wasm trap: interrupt" in normalized or "epoch deadline" in normalized:
+        return "Execution timed out: wall-clock limit exceeded."
+    if (
+        "all fuel consumed by webassembly" in normalized
+        or "out of fuel" in normalized
+        or "fuel exhausted" in normalized
+    ):
+        return "Execution timed out: instruction fuel exhausted."
+    return None
+
+
+def run_plugin(
+    artifact: bytes | Any,
+    *,
+    memory_bytes: int = DEFAULT_MEMORY_BYTES,
+    fuel: int = DEFAULT_FUEL,
+    wall_timeout_seconds: float = DEFAULT_WALL_TIMEOUT_SECONDS,
+) -> PluginResult:
+    """Run a packaged script with explicit WASM limits and elapsed timing.
+
+    ``exec_ms`` measures the call to ``micropython_wasm.run`` and therefore
+    includes its per-run engine/module startup. Artifact extraction and API
+    request parsing are outside this measurement. Memory usage is not measured.
+    """
     if hasattr(artifact, "wasm_bytes"):
         artifact_bytes = artifact.wasm_bytes
     else:
@@ -114,16 +156,32 @@ def run_plugin(artifact: bytes | Any) -> PluginResult:
     except ArtifactError as exc:
         return PluginResult("error", "", f"Invalid plugin artifact: {exc}")
 
+    started_at = time.perf_counter()
     try:
         # No readonly_dir and no host_functions: no files, no network.
-        # Package defaults for fuel and timeout stay as they are (Week 3).
-        result = run(_wrap(script), wasm_path=INTERPRETER_PATH)
+        with _RUNNER_LOCK:
+            result = run(
+                _wrap(script),
+                wasm_path=INTERPRETER_PATH,
+                memory_bytes=memory_bytes,
+                fuel=fuel,
+                wall_timeout_seconds=wall_timeout_seconds,
+            )
     except MicroPythonWasmError as exc:
+        elapsed_ms = _elapsed_ms(started_at)
         text = str(exc).strip()
+        timeout_stderr = _timeout_message(text)
+        if timeout_stderr:
+            return PluginResult("timeout", "", timeout_stderr, elapsed_ms)
         first_line = text.splitlines()[0][:200] if text else "unknown failure"
-        return PluginResult("error", "", f"Execution failed: {first_line}")
+        return PluginResult(
+            "error", "", f"Execution failed: {first_line}", elapsed_ms
+        )
 
+    elapsed_ms = _elapsed_ms(started_at)
     # Check stderr only, never stdout, for the marker.
     if result.stderr.startswith(ERROR_MARKER):
-        return PluginResult("error", result.stdout, _clean_error(result.stderr))
-    return PluginResult("ok", result.stdout, result.stderr)
+        return PluginResult(
+            "error", result.stdout, _clean_error(result.stderr), elapsed_ms
+        )
+    return PluginResult("ok", result.stdout, result.stderr, elapsed_ms)

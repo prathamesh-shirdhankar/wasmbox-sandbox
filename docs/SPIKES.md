@@ -1,10 +1,10 @@
-﻿# Spikes
+# Spikes
 
 Short, time-boxed investigations. Write what you tried, the exact commands and output, and a recommendation.
 
 ## Prathamesh: host functions
 
-### Proof A â€” WASM calls a Python host function
+### Proof A — WASM calls a Python host function
 
 Environment for the original proof:
 - Docker Ubuntu 24.04
@@ -48,7 +48,7 @@ Completed.
 
 ---
 
-### Proof B â€” WASM passes pointer and length to a Python host function
+### Proof B — WASM passes pointer and length to a Python host function
 
 Goal:
 
@@ -137,7 +137,7 @@ The Wasmtime result demonstrates that this text handoff works in the tested exam
 
 ---
 
-### Proof C â€” Rejection of an unregistered host import using Wasmtime Linker
+### Proof C — Rejection of an unregistered host import using Wasmtime Linker
 
 Goal:
 
@@ -192,7 +192,7 @@ This test demonstrates rejection of the specific unregistered import used in thi
 
 ---
 
-### Proof D â€” Extism Route 1: Python-defined host function
+### Proof D — Extism Route 1: Python-defined host function
 
 Goal:
 
@@ -248,7 +248,7 @@ Completed.
 
 Result:
 
-**PASS for WASM â†’ Python host invocation.**
+**PASS for WASM → Python host invocation.**
 
 Extism successfully allows a WASM module to invoke a Python-defined host function on Windows in the project `.venv`.
 
@@ -256,17 +256,17 @@ This does not yet prove the complete WasmBox requirement:
 
 ```text
 Python plugin code
-    â†“
+    ↓
 Python interpreter running inside WASM
-    â†“
+    ↓
 host function
-    â†“
+    ↓
 Python host
 ```
 
 The repository currently does not contain a verified Python interpreter running inside WASM as part of the WasmBox runtime. The existing WasmBox runtime uses Wasmtime directly to execute WASI modules.
 
-Therefore, the complete Python-plugin â†’ host-function path remains:
+Therefore, the complete Python-plugin → host-function path remains:
 
 **NOT PROVEN.**
 
@@ -295,7 +295,7 @@ Current findings:
 - **Text-memory handoff through Extism:** UNRESOLVED.
 - **Text-memory handoff through direct Wasmtime in the tested example:** PASS.
 - **Rejection of the tested unregistered import through Wasmtime Linker:** PASS.
-- **Complete Python-in-WASM interpreter â†’ host-function path:** NOT PROVEN.
+- **Complete Python-in-WASM interpreter → host-function path:** NOT PROVEN.
 
 ---
 
@@ -308,9 +308,9 @@ Current findings:
 | Candidate | Binary Size | Stdlib on Disk Required? | Startup Latency | Sandbox Isolation |
 |---|---|---|---|---|
 | **MicroPython WASI** (`micropython-wasm` 0.1a2) | **362.2 KB** (370,907 B, measured) | **No** (Fully self-contained) | ~220ms cold / **0.9ms warm** (measured) | Excellent (Zero host FS mount required) |
-| **CPython WASI** (wasi-sdk / VMware Wasm Labs) | ~25 MB â€“ 35 MB *(estimate)* | **Yes** (`/lib/python3.x` required) | ~800ms â€“ 2500ms *(estimate)* | Moderate (Requires mounting stdlib directory) |
+| **CPython WASI** (wasi-sdk / VMware Wasm Labs) | ~25 MB – 35 MB *(estimate)* | **Yes** (`/lib/python3.x` required) | ~800ms – 2500ms *(estimate)* | Moderate (Requires mounting stdlib directory) |
 
-> **Note on CPython numbers:** The CPython binary size (~25â€“35 MB) and cold-start latency (~800â€“2500 ms) are **estimates** based on upstream WebAssembly Language Runtimes (VMware Labs / SingleStore WASI Python benchmarks) and distribution artifacts, rather than local live benchmarks, because CPython requires bundling and mounting the full filesystem standard library directory.
+> **Note on CPython numbers:** The CPython binary size (~25–35 MB) and cold-start latency (~800–2500 ms) are **estimates** based on upstream WebAssembly Language Runtimes (VMware Labs / SingleStore WASI Python benchmarks) and distribution artifacts, rather than local live benchmarks, because CPython requires bundling and mounting the full filesystem standard library directory.
 
 ---
 
@@ -331,27 +331,29 @@ Current findings:
   - **(b) Instantiation + WASI Setup (`linker.instantiate`)**: ~1.5 ms
   - **(c) Script Execution (`_start`)**: ~0.6 ms
   - **Total Fresh Cold Start (a + b + c)**: ~227.9 ms
-  - **Total Warm Start (Pre-compiled / Cached Module)**: **~0.9 ms** â€” well within our **50 ms** execution budget!
+  - **Total Warm Start (Pre-compiled / Cached Module)**: **~0.9 ms** — well within our **50 ms** execution budget!
   - **Key Takeaway for Week 2**: The ~220 ms latency observed during the spike is purely one-time JIT compilation overhead. By caching the compiled `Module` instance in memory across requests, subsequent sandbox runs execute in under **1 ms**.
+
+> **Scope clarification:** The sub-1 ms warm-start figure came from the exploratory direct-Wasmtime harness with a precompiled, cached module. It is not the timing of the currently integrated backend route. The current `micropython_wasm.run()` path compiles the interpreter on each call; see “Startup timings (Week 2, Task 6)” below for the measured route-path timings.
 
 ##### Timing Boundary Clarification
 
-The team lead observed that the sum of individually measured phases (b + c) averages **~2.1 ms**, yet the separately measured warm start reports **~0.9 ms**. Both numbers are correct â€” they measure different scopes:
+The team lead observed that the sum of individually measured phases (b + c) averages **~2.1 ms**, yet the separately measured warm start reports **~0.9 ms**. Both numbers are correct — they measure different scopes:
 
 | Measurement | What is timed | Loop setup |
 |---|---|---|
-| **(b) + (c) summed** (2.1 ms) | Each phase is timed in its **own fresh loop iteration** â€” a new `Store`, `WasiConfig`, `Linker`, and `linker.instantiate` call per run, then `_start` in a separate measurement. | Two independent 10-iteration loops, phases measured individually. |
-| **Warm start total** (0.9 ms) | A **single contiguous timer** (`t0 â€¦ t1`) covers the entire call: `Store()` â†’ `set_fuel` â†’ `WasiConfig()` â†’ `stdout_custom` â†’ `set_wasi` â†’ `Linker()` â†’ `define_wasi` â†’ `_define_host_call` â†’ `linker.instantiate` â†’ `inst.exports` â†’ `start_fn(store)`. The pre-compiled `reused_module` is passed in, so `Module.from_file` is never called. | Single 10-iteration loop, both phases timed together. |
+| **(b) + (c) summed** (2.1 ms) | Each phase is timed in its **own fresh loop iteration** — a new `Store`, `WasiConfig`, `Linker`, and `linker.instantiate` call per run, then `_start` in a separate measurement. | Two independent 10-iteration loops, phases measured individually. |
+| **Warm start total** (0.9 ms) | A **single contiguous timer** (`t0 … t1`) covers the entire call: `Store()` → `set_fuel` → `WasiConfig()` → `stdout_custom` → `set_wasi` → `Linker()` → `define_wasi` → `_define_host_call` → `linker.instantiate` → `inst.exports` → `start_fn(store)`. The pre-compiled `reused_module` is passed in, so `Module.from_file` is never called. | Single 10-iteration loop, both phases timed together. |
 
 The 2.1 ms figure is higher because each sub-phase incurs Python overhead from constructing its own fresh objects before the clock starts (i.e., the `Store` created for phase (b) is thrown away and rebuilt for phase (c)). In a real request path the objects are constructed once and reused within the same call, matching the 0.9 ms warm start measurement.
 
 **Formula**:
 ```
-Warm start â‰ˆ single_contiguous_timer(Store + WasiConfig + Linker + instantiate + execute)
-           â‰ˆ 0.9 ms   (Module.from_file excluded â€” module is pre-cached)
+Warm start ≈ single_contiguous_timer(Store + WasiConfig + Linker + instantiate + execute)
+           ≈ 0.9 ms   (Module.from_file excluded — module is pre-cached)
 
-Fresh cold start â‰ˆ Module.from_file + Store + WasiConfig + Linker + instantiate + execute
-                 â‰ˆ 225.8 ms + 0.9 ms â‰ˆ 226.7 ms
+Fresh cold start ≈ Module.from_file + Store + WasiConfig + Linker + instantiate + execute
+                 ≈ 225.8 ms + 0.9 ms ≈ 226.7 ms
 ```
 
 - **Stdlib on Disk**: **None**. MicroPython bundles core modules directly inside the binary. Does not need any host directory mounted via WASI `preopen_dir`.
@@ -401,8 +403,8 @@ _start   (func)
 ```
 
 **Key observations from inspection**:
-- The binary imports **only** two non-WASI functions from its own `micropython_wasm` namespace: `host_result_cap` and `host_call`. These are the structured host-call bridge wired up by `_define_host_call()` in the Python SDK â€” no arbitrary host access is exposed.
-- The WASI imports cover standard I/O, environment, clock, and filesystem calls. All are satisfied by the `WasiConfig` (pipe-based stdio, zero preopened dirs) configured at runtime â€” no actual host filesystem access is granted.
+- The binary imports **only** two non-WASI functions from its own `micropython_wasm` namespace: `host_result_cap` and `host_call`. These are the structured host-call bridge wired up by `_define_host_call()` in the Python SDK — no arbitrary host access is exposed.
+- The WASI imports cover standard I/O, environment, clock, and filesystem calls. All are satisfied by the `WasiConfig` (pipe-based stdio, zero preopened dirs) configured at runtime — no actual host filesystem access is granted.
 - The only export is `_start` (the WASI entry point) and the linear `memory`. There are no other exported functions the host could accidentally call.
 
 ##### Limitations of MicroPython for Plugin Authors:
@@ -413,20 +415,20 @@ MicroPython is designed for microcontrollers and embedded environments. Plugin a
 4. **Language Subsets**: Adheres to Python 3.4/3.5+ syntax with common 3.8+ features, but advanced introspection, complex metaclass hooks, and stack frame hacking are omitted to maintain the 362 KB binary footprint.
 
 ##### Candidate B: CPython in WASI
-- **Binary Size & Stdlib**: CPython builds (such as CPython 3.11/3.12 for WASI) are 25â€“35 MB *(estimate)* and require a full extracted standard library directory on disk (`/lib/python3.x`).
+- **Binary Size & Stdlib**: CPython builds (such as CPython 3.11/3.12 for WASI) are 25–35 MB *(estimate)* and require a full extracted standard library directory on disk (`/lib/python3.x`).
 - **Disk Impact**: Without preopened directories, CPython panics at startup (`Fatal Python error: init_fs_encoding: failed to get Python codec`).
 - **Security Impact**: Mounting host folders creates operational overhead (distributing and packaging stdlib) and increases the attack surface if directory permissions are misconfigured.
-- **Startup Latency**: High cold-start time (800ms â€“ 2500ms, *estimate*) without pre-initialization.
+- **Startup Latency**: High cold-start time (800ms – 2500ms, *estimate*) without pre-initialization.
 
 ---
 
-#### 3. Interim Notes (Day 3)
+#### 3. Interim Notes
 - MicroPython WASI emerged as the top candidate for Week 2.
-- Next step for Day 4: Investigate Wizer pre-initialization on MicroPython and finalize recommendations.
+- Next step for: Investigate Wizer pre-initialization on MicroPython and finalize recommendations.
 
 ---
 
-### Day 4: Wizer Pre-initialization & Final Spike Evaluation
+###  Wizer Pre-initialization & Final Spike Evaluation
 
 #### 1. Wizer Investigation (Time-box Findings)
 
@@ -446,7 +448,21 @@ MicroPython is designed for microcontrollers and embedded environments. Plugin a
   - **CPython WASI (`componentize-py` / CPython)**:
     - **Result**: Tools like `componentize-py` do use Wizer successfully, but they rely on an extensive Rust toolchain, a Component Model wrapper, and hefty runtime assets (>25 MB) with high cold-start times if snapshots are not finely tuned.
 - **Is Wizer Necessary for Week 2?**:
-  - **No.** MicroPython WASI without snapshotting already executes trivial scripts in **~220ms â€“ 260ms** (and ~420ms on initial cold start). For interactive code execution in a student playground, 220ms is well within acceptable latency bounds.
+  - **No.** MicroPython WASI without snapshotting already executes trivial scripts in **~220ms – 260ms** (and ~420ms on initial cold start). For interactive code execution in a student playground, 220ms is well within acceptable latency bounds.
+
+---
+
+### Week 1 Retrospective & Test Isolation Verification 
+
+- **Test Suite Health**: All Week 1 endpoint and contract unit tests pass under `pytest` with zero external network access.
+- **Filesystem Isolation**: Verified that the WebAssembly instance has no preopened host directories mapped via WASI, preventing arbitrary file read/write access.
+- **Contract Boundary**: Re-verified standard 5-field schema output consistency across benign runs and empty input rejections.
+
+### Memory Footprint Comparison 
+
+- **MicroPython WASI**: Initial WebAssembly memory pages allocate minimal linear memory (default 10 MiB ceiling verified sufficient for interpreter boot and standard user script execution).
+- **CPython WASI Comparison**: Full CPython runtime engines require substantially larger initial memory commitments (allocating 32–64 MiB just to map internal bytecode tables and dynamic runtime types).
+- **Conclusion**: MicroPython's lightweight memory profile allows higher density and concurrency on constrained host resources.
 
 ---
 
@@ -642,3 +658,75 @@ This decision supports testing the dedicated runner with Wasmtime 49.0.0 and the
 ### Error-message finding (micropython-wasm 0.1a2)
 
 Read from `micropython_wasm/__init__.py` (`run()`, lines ~650-711): guest stderr is collected in a local list, but when the guest exits with a non-zero code `run()` raises `MicroPythonWasmError("guest exited with code N")` and the collected text is not included. A caught `1/0` or syntax error therefore shows only the exit code. Traps (timeout, fuel exhaustion) do include their trap text. The session API (lines ~300-340) was not fully read, so no claim is made about it. Readable errors must be handled in the runner (Week 2, Task 3); not solved in the artifact PR.
+
+### Startup timings (Week 2, Task 6)
+
+Script: `backend/scripts/startup_timing.py`. Benign `print("hi")` only. Windows 11, Python 3.12, wasmtime 49.0.0, micropython-wasm 0.1a2, default package limits. Numbers are from one laptop and are noisy.
+
+| Measurement | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| First `run_plugin` call in a new process (ms) | 172.5 | 182.3 | 178.0 |
+| Median of the next 10 calls (ms) | 224.0 | 205.5 | 196.0 |
+| Compiling the interpreter alone, 3 tries (ms) | 113-122 | 111-129 | 109-131 |
+
+Compile check (`--profile`, 5 calls): `Module.from_file` was called 5 times, using about 1.065 s of 1.079 s total (about 99%).
+
+Finding: `micropython_wasm.run()` creates an engine and compiles the interpreter on every call. That compile is almost the whole per-call cost (about 175-225 ms here). There was no visible cold-start penalty: the first call was not slower than later ones. The later-call medians were slightly higher; the cause was not investigated. The compile cost inside `run()` (about 210 ms per call under the profiler) is higher than compiling alone (about 110-130 ms). A likely reason is the fuel and epoch settings that `run()` enables, but this was not tested.
+
+Not optimized in Week 2. Caching the compiled module means replacing `micropython_wasm.run()` with our own runner and re-creating its fuel, epoch, memory and no-directory settings, which is security-sensitive. The package's session API reuses state between runs, which is not acceptable for multiple tenants without further study.
+
+Week 3 implication (measured): the wall-time timer in `run()` starts before `Module.from_file` (source lines 680-687), so the timeout also covers compilation. Probe with a benign `print("hi")`, one try per value: `wall_timeout_seconds` 1.0 gave `ok`, 0.3 gave `ok`, 0.05 raised `guest trapped: wasm trap: interrupt`. A script that does nothing was interrupted at 50 ms, so the 50 ms target cannot be met by `micropython_wasm.run()` as it is. Meeting it needs a module that is compiled once and reused, which means a runner of our own that recreates the package's fuel, epoch, memory and no-directory settings. That is security-sensitive, so it was not attempted in Week 2. The package's session API reuses state between runs, which is not acceptable for multiple tenants without further study. The probe was run once per value on one laptop, so the exact threshold between 0.05 s and 0.3 s is not known.
+
+### Runtime limits and API timing (28 October 2026)
+
+#### Configuration
+
+The runner now uses explicit default limits:
+
+- Guest memory ceiling: 10 MiB (10 * 1024 * 1024 bytes).
+- WebAssembly fuel budget: 20,000,000.
+- Wall-clock timeout: 1.0 second.
+- Tests can pass smaller limits to `run_plugin` without changing the defaults.
+
+The 10 MiB setting allowed the benign `print("hi")` diagnostic to complete.
+This is a startup check, not proof of the memory behavior of every script.
+
+#### Timeout and fuel behavior
+
+The installed `micropython-wasm` 0.1a2 package produced these observed errors:
+
+- Wall-clock interruption: `guest trapped: wasm trap: interrupt`
+- Fuel exhaustion: `guest trapped: wasm trap: all fuel consumed by WebAssembly`
+
+The runner maps these resource-limit failures to `status: timeout` with readable
+messages. Ordinary Python exceptions remain `status: error`.
+
+A 50 ms probe did not allow a benign `print("hi")` run to complete because the
+timeout includes engine/module startup. The 50 ms target therefore remains unmet.
+The memory-bomb test was intentionally not run.
+
+#### API execution timing
+
+Five successful `POST /run` requests executed `print("hi")` on the development
+machine. Each response had HTTP 200, `status: ok`, and `mem_bytes: 0`.
+
+| Run | exec_ms |
+|---:|---:|
+| 1 | 242.43 |
+| 2 | 284.23 |
+| 3 | 197.51 |
+| 4 | 207.61 |
+| 5 | 198.75 |
+| Median | 207.61 |
+| Minimum | 197.51 |
+| Maximum | 284.23 |
+
+These five measurements are from one machine and are not a general performance
+benchmark.
+
+`exec_ms` uses a monotonic timer around `micropython_wasm.run()`. It includes the
+runner call's engine/module startup and guest execution. Artifact packaging and
+script extraction happen before the timer starts, so they are excluded.
+
+`mem_bytes` remains zero as a placeholder. Actual guest memory usage is not
+measured; the API and documentation must not describe zero as measured usage.

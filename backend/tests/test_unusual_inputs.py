@@ -28,7 +28,7 @@ def test_comments_only_executes_ok():
     assert data["status"] == "ok"
     assert data["stdout"] == ""
     assert data["stderr"] == ""
-    assert data["exec_ms"] == 0
+    assert data["exec_ms"] > 0
     assert data["mem_bytes"] == 0
 
 
@@ -62,7 +62,7 @@ def test_tab_indentation_executes_ok():
     assert data["status"] == "ok"
     assert data["stdout"] == "Hello, WasmBox\n"
     assert data["stderr"] == ""
-    assert data["exec_ms"] == 0
+    assert data["exec_ms"] > 0
     assert data["mem_bytes"] == 0
 
 
@@ -79,7 +79,7 @@ def test_mixed_tabs_and_spaces_indentation_error():
     assert data["status"] == "error"
     assert "IndentationError" in data["stderr"] or "TabError" in data["stderr"]
     assert data["stdout"] == ""
-    assert data["exec_ms"] == 0
+    assert data["exec_ms"] > 0
     assert data["mem_bytes"] == 0
 
 
@@ -92,7 +92,7 @@ def test_indentation_syntax_error():
     assert data["status"] == "error"
     assert len(data["stderr"]) > 0
     assert data["stdout"] == ""
-    assert data["exec_ms"] == 0
+    assert data["exec_ms"] > 0
     assert data["mem_bytes"] == 0
 
 
@@ -111,19 +111,19 @@ def test_single_very_long_line_under_limit():
     assert data["status"] == "ok"
     assert data["stdout"] == f"{content_length}\n"
     assert data["stderr"] == ""
+    assert data["exec_ms"] > 0
 
 
 def test_script_generating_large_output():
     """
     Script generating 5,000 lines of output executes without crashing the server.
-    Accepts either 'ok' (if runner finishes within default wall timeout) or
-    'error' (if interrupted by the runner's default 1.0s wall timeout on slower CI runners).
+    Accepts 'ok' when complete or 'timeout' when the configured wall-clock limit interrupts execution.
     """
     code = "for i in range(5000):\n    print(i)\n"
     response = client.post("/run", json={"code": code})
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] in ("ok", "error")
+    assert data["status"] in ("ok", "timeout")
     if data["status"] == "ok":
         lines = data["stdout"].splitlines()
         assert len(lines) == 5000
@@ -131,7 +131,26 @@ def test_script_generating_large_output():
         assert lines[-1] == "4999"
         assert data["stderr"] == ""
     else:
-        # If the runner timed out on a slow CI machine, verify server remains up and error is graceful
-        assert "Execution failed" in data["stderr"] or "timeout" in data["stderr"].lower()
-    assert data["exec_ms"] == 0
+        # Verify the configured runtime limit is surfaced as a timeout.
+        assert "timed out" in data["stderr"].lower()
+    assert data["exec_ms"] > 0
     assert data["mem_bytes"] == 0
+
+
+def test_repeated_timeout_interruptions_leave_server_healthy():
+    """Verify that multiple consecutive timeout-trapped runs do not poison the worker process."""
+    infinite_loop_code = "while True: pass"
+    for _ in range(3):
+        res = client.post("/run", json={"code": infinite_loop_code})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] in ("error", "timeout")
+
+    # Immediate benign execution must succeed cleanly
+    benign_res = client.post("/run", json={"code": "print(42 + 58)"})
+    assert benign_res.status_code == 200
+    benign_data = benign_res.json()
+    assert benign_data["status"] == "ok"
+    assert benign_data["stdout"] == "100\n"
+    assert benign_data["stderr"] == ""
+

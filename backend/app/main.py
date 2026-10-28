@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router as api_router
+from app.api.plugins_routes import router as plugins_router
 
 app = FastAPI(
     title="WasmBox API",
@@ -26,3 +27,4 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+app.include_router(plugins_router)

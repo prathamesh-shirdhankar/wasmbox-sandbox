@@ -76,3 +76,4 @@ The five-field response shape is the same as Week 1. Real execution is now wired
 1. The `code` field is required. A missing `code` returns HTTP 422 (FastAPI validation), which does **not** follow the five-field schema. Frontend must handle 422 separately.
 2. Empty or whitespace-only code returns a normal 200 with `status: "error"` and `stderr: "No code provided"`.
 3. Code longer than 10,000 characters is rejected before execution with `status: "error"` and a clear size message.
+4. Frontend Editor Integration: Confirmed frontend Monaco editor state binds directly to string payload in `{"code": "..."}`. CORS headers on backend explicitly allow preflight OPTIONS requests from `http://localhost:5173`.

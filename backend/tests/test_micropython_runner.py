@@ -12,11 +12,13 @@ def test_extract_script_roundtrip():
 def test_one_print():
     result = run_plugin(temp_package('print("hi")'))
     assert (result.status, result.stdout, result.stderr) == ("ok", "hi\n", "")
+    assert result.exec_ms > 0
 
 
 def test_two_prints():
     result = run_plugin(temp_package('print("a")\nprint("b")'))
     assert (result.status, result.stdout, result.stderr) == ("ok", "a\nb\n", "")
+    assert result.exec_ms > 0
 
 
 def test_exception_is_readable_error():
@@ -25,6 +27,7 @@ def test_exception_is_readable_error():
     assert "ZeroDivisionError" in result.stderr
     assert "@@WASMBOX_ERROR@@" not in result.stderr
     assert "<stdin>" not in result.stderr
+    assert result.exec_ms > 0
 
 
 def test_syntax_error_is_readable_error():
@@ -33,6 +36,7 @@ def test_syntax_error_is_readable_error():
     assert "SyntaxError" in result.stderr
     assert "@@WASMBOX_ERROR@@" not in result.stderr
     assert "<stdin>" not in result.stderr
+    assert result.exec_ms > 0
 
 
 def test_invalid_artifact_returns_error():
