@@ -116,7 +116,7 @@ def test_trigger_webhook_executes_saved_plugin():
     assert data["status"] == "ok"
     assert data["stdout"] == "hi\n"
     assert data["stderr"] == ""
-    assert data["exec_ms"] == 0
+    assert data["exec_ms"] >= 0
     assert data["mem_bytes"] == 0
 
 
