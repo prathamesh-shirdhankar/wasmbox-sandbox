@@ -5,7 +5,7 @@ import { runCode } from "./api";
 
 function App() {
   const [code, setCode] = useState(
-`print("Hello from Python!")
+    `print("Hello from Python!")
 print("Wasmbox is working!")`
   );
 
@@ -13,23 +13,56 @@ print("Wasmbox is working!")`
     status: "ok",
     stdout: "",
     stderr: "",
+    exec_ms: 0,
+    mem_bytes: 0,
   });
 
   const [loading, setLoading] = useState(false);
 
   const handleRun = async () => {
+    // Prevent empty code submission
+    if (!code.trim()) {
+      setOutput({
+        status: "error",
+        stdout: "",
+        stderr: "Please enter some Python code to run.",
+        exec_ms: 0,
+        mem_bytes: 0,
+      });
+      return;
+    }
+
     setLoading(true);
 
     setOutput({
       status: "ok",
       stdout: "",
       stderr: "",
+      exec_ms: 0,
+      mem_bytes: 0,
     });
 
-    const result = await runCode(code);
+    try {
+      const result = await runCode(code);
 
-    setOutput(result);
-    setLoading(false);
+      setOutput({
+        status: result.status ?? "error",
+        stdout: result.stdout ?? "",
+        stderr: result.stderr ?? "",
+        exec_ms: result.exec_ms ?? 0,
+        mem_bytes: result.mem_bytes ?? 0,
+      });
+    } catch (error) {
+      setOutput({
+        status: "error",
+        stdout: "",
+        stderr: "Unable to run code. Please check whether the backend is running.",
+        exec_ms: 0,
+        mem_bytes: 0,
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -47,7 +80,10 @@ print("Wasmbox is working!")`
             <button
               onClick={handleRun}
               disabled={loading}
-              style={styles.runButton}
+              style={{
+                ...styles.runButton,
+                opacity: loading ? 0.7 : 1,
+              }}
             >
               {loading ? "Running..." : "▶ Run"}
             </button>
@@ -79,6 +115,7 @@ const styles = {
 
   header: {
     marginBottom: "25px",
+    textAlign: "center",
   },
 
   main: {
