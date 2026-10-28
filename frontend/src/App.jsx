@@ -1,7 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import CodeEditor from "./components/CodeEditor";
 import OutputPanel from "./components/OutputPanel";
-import { runCode } from "./api";
+import {
+  runCode,
+  savePlugin,
+  listPlugins,
+  loadPlugin,
+  runWebhook,
+} from "./api";
 
 function App() {
   const [code, setCode] = useState(
@@ -20,21 +26,30 @@ print("Wasmbox is working!")`
   const [loading, setLoading] = useState(false);
   const [pluginName, setPluginName] = useState("");
   const [savedPlugins, setSavedPlugins] = useState([]);
-  const [message, setMessage] = useState("");
+  const [selectedPluginId, setSelectedPluginId] = useState("");
+  const [pluginMessage, setPluginMessage] = useState("");
+  const [pluginError, setPluginError] = useState(false);
+  const [webhookMessage, setWebhookMessage] = useState("");
+  const [webhookLoading, setWebhookLoading] = useState(false);
+  const [outputLabel, setOutputLabel] = useState("");
+
+  async function refreshPlugins() {
+    try {
+      const plugins = await listPlugins();
+      setSavedPlugins(Array.isArray(plugins) ? plugins : []);
+    } catch (error) {
+      setPluginError(true);
+      setPluginMessage(error.message || "Unable to load plugins.");
+    }
+  }
+
+  useEffect(() => {
+    refreshPlugins();
+  }, []);
 
   async function handleRun() {
-    if (!code.trim()) {
-      setOutput({
-        status: "error",
-        stdout: "",
-        stderr: "Please enter some Python code to run.",
-        exec_ms: null,
-        mem_bytes: null,
-      });
-      return;
-    }
-
     setLoading(true);
+    setOutputLabel("");
 
     try {
       const result = await runCode(code);
@@ -46,11 +61,11 @@ print("Wasmbox is working!")`
         exec_ms: result.exec_ms ?? null,
         mem_bytes: result.mem_bytes ?? null,
       });
-    } catch {
+    } catch (error) {
       setOutput({
         status: "error",
         stdout: "",
-        stderr: "Unable to run code. Please check whether the backend is running.",
+        stderr: error.message || "Unable to run code.",
         exec_ms: null,
         mem_bytes: null,
       });
@@ -59,42 +74,116 @@ print("Wasmbox is working!")`
     }
   }
 
-  function handleSavePlugin() {
-    const name = pluginName.trim();
+  async function handleSavePlugin() {
+    setPluginMessage("");
+    setPluginError(false);
 
-    if (!name) {
-      setMessage("Please enter a plugin name.");
+    if (!pluginName.trim()) {
+      setPluginError(true);
+      setPluginMessage("Please enter a plugin name.");
       return;
     }
 
-    if (savedPlugins.some((plugin) => plugin.name === name)) {
-      setMessage("A plugin with this name already exists.");
-      return;
+    try {
+      const plugin = await savePlugin(pluginName, code);
+
+      if (plugin.id == null) {
+        throw new Error("The saved plugin did not return an ID.");
+      }
+
+      setSelectedPluginId(String(plugin.id));
+      setPluginName("");
+      setPluginMessage(`Saved "${plugin.name || pluginName.trim()}" (id ${plugin.id}).`);
+
+      await refreshPlugins();
+    } catch (error) {
+      setPluginError(true);
+      setPluginMessage(error.message || "Failed to save plugin.");
     }
-
-    setSavedPlugins((previous) => [
-      ...previous,
-      {
-        id: `${Date.now()}-${name}`,
-        name,
-        code,
-      },
-    ]);
-
-    setPluginName("");
-    setMessage(`"${name}" saved successfully.`);
   }
 
-  function handleLoadPlugin(plugin) {
-    setCode(plugin.code);
-    setMessage(`Loaded "${plugin.name}".`);
+  async function handleLoadPlugin(id) {
+    setPluginMessage("");
+    setPluginError(false);
+
+    try {
+      const plugin = await loadPlugin(id);
+
+      if (typeof plugin.code !== "string") {
+        throw new Error("The plugin does not contain code.");
+      }
+
+      setCode(plugin.code);
+      setSelectedPluginId(String(plugin.id));
+      setPluginMessage(`Loaded "${plugin.name}".`);
+    } catch (error) {
+      setPluginError(true);
+      setPluginMessage(error.message || "Failed to load plugin.");
+    }
+  }
+
+  async function handleWebhook() {
+    setWebhookMessage("");
+
+    if (!selectedPluginId) {
+      setWebhookMessage("Please select or load a plugin first.");
+      return;
+    }
+
+    setWebhookLoading(true);
+
+    try {
+      const result = await runWebhook(selectedPluginId);
+
+      setOutput({
+        status: result.status ?? "error",
+        stdout: result.stdout ?? "",
+        stderr: result.stderr ?? "",
+        exec_ms: result.exec_ms ?? null,
+        mem_bytes: result.mem_bytes ?? null,
+      });
+
+      setOutputLabel(
+        result.simulated
+          ? "Triggered by webhook (simulated)"
+          : "Triggered by webhook"
+      );
+
+      setWebhookMessage(
+        result.status === "ok"
+          ? "Webhook completed."
+          : "Webhook returned an error."
+      );
+    } catch (error) {
+      setWebhookMessage(error.message || "Webhook failed.");
+      setOutput({
+        status: "error",
+        stdout: "",
+        stderr: error.message || "Webhook failed.",
+        exec_ms: null,
+        mem_bytes: null,
+      });
+      setOutputLabel("Webhook error");
+    } finally {
+      setWebhookLoading(false);
+    }
   }
 
   function handleRemovePlugin(id) {
-    setSavedPlugins((previous) =>
-      previous.filter((plugin) => plugin.id !== id)
+    setPluginError(false);
+    setPluginMessage(
+      "Remove is local-only in this demo; no backend DELETE endpoint is documented."
     );
-    setMessage("Plugin removed.");
+
+    // No DELETE endpoint is documented, so do not claim
+    // that a plugin has been permanently deleted.
+    setSavedPlugins((previous) =>
+      previous.filter((plugin) => String(plugin.id) !== String(id))
+    );
+
+    if (String(selectedPluginId) === String(id)) {
+      setSelectedPluginId("");
+    }
   }
 
   return (
@@ -111,10 +200,7 @@ print("Wasmbox is working!")`
             <button
               onClick={handleRun}
               disabled={loading}
-              style={{
-                ...styles.runButton,
-                opacity: loading ? 0.7 : 1,
-              }}
+              style={styles.runButton}
             >
               {loading ? "Running..." : "▶ Run"}
             </button>
@@ -138,9 +224,7 @@ print("Wasmbox is working!")`
               value={pluginName}
               onChange={(event) => setPluginName(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  handleSavePlugin();
-                }
+                if (event.key === "Enter") handleSavePlugin();
               }}
               style={styles.input}
             />
@@ -151,11 +235,24 @@ print("Wasmbox is working!")`
             >
               Save Plugin
             </button>
+
+            <button
+              onClick={refreshPlugins}
+              style={styles.loadButton}
+            >
+              Refresh List
+            </button>
           </div>
 
-          {message && (
-            <p role="status" style={styles.message}>
-              {message}
+          {pluginMessage && (
+            <p
+              role="status"
+              style={{
+                ...styles.message,
+                color: pluginError ? "#b91c1c" : "#166534",
+              }}
+            >
+              {pluginMessage}
             </p>
           )}
 
@@ -166,11 +263,22 @@ print("Wasmbox is working!")`
           ) : (
             savedPlugins.map((plugin) => (
               <div key={plugin.id} style={styles.pluginRow}>
-                <strong>{plugin.name}</strong>
+                <label style={styles.pluginLabel}>
+                  <input
+                    type="radio"
+                    name="selectedPlugin"
+                    checked={String(selectedPluginId) === String(plugin.id)}
+                    onChange={() =>
+                      setSelectedPluginId(String(plugin.id))
+                    }
+                  />
+                  <strong>{plugin.name || `Plugin ${plugin.id}`}</strong>
+                  <span style={styles.pluginId}>ID: {plugin.id}</span>
+                </label>
 
                 <div style={styles.controls}>
                   <button
-                    onClick={() => handleLoadPlugin(plugin)}
+                    onClick={() => handleLoadPlugin(plugin.id)}
                     style={styles.loadButton}
                   >
                     Load
@@ -180,7 +288,7 @@ print("Wasmbox is working!")`
                     onClick={() => handleRemovePlugin(plugin.id)}
                     style={styles.removeButton}
                   >
-                    Remove
+                    Remove (local)
                   </button>
                 </div>
               </div>
@@ -188,31 +296,35 @@ print("Wasmbox is working!")`
           )}
 
           <p style={styles.note}>
-            Demo mode: plugins are stored temporarily and disappear when the
-            page is refreshed.
+            Plugin storage is currently mock-only and temporary. Refreshing
+            the page clears mock data.
           </p>
         </section>
+
         <section style={styles.section}>
-  <h2>Webhook</h2>
-  <p style={styles.description}>
-    Trigger a demo webhook action.
-  </p>
+          <h2>Webhook</h2>
+          <p style={styles.description}>
+            Select a plugin above, then trigger its demo webhook.
+          </p>
 
-  <button
-    onClick={() => {
-      setMessage("Webhook demo triggered successfully.");
-    }}
-    style={styles.saveButton}
-  >
-    Trigger Webhook
-  </button>
+          <button
+            onClick={handleWebhook}
+            disabled={webhookLoading}
+            style={styles.saveButton}
+          >
+            {webhookLoading ? "Triggering..." : "Trigger Webhook"}
+          </button>
 
-  {message && (
-    <p role="status" style={styles.message}>
-      {message}
-    </p>
-  )}
-</section>
+          {webhookMessage && (
+            <p role="status" style={styles.message}>
+              {webhookMessage}
+            </p>
+          )}
+        </section>
+
+        {outputLabel && (
+          <p style={styles.outputLabel}>{outputLabel}</p>
+        )}
 
         <OutputPanel output={output} />
       </main>
@@ -229,17 +341,14 @@ const styles = {
     padding: "30px",
     boxSizing: "border-box",
   },
-
   header: {
     marginBottom: "25px",
     textAlign: "center",
   },
-
   main: {
     maxWidth: "1100px",
     margin: "0 auto",
   },
-
   section: {
     background: "#fff",
     padding: "20px",
@@ -247,7 +356,6 @@ const styles = {
     marginBottom: "25px",
     boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
   },
-
   sectionHeader: {
     display: "flex",
     justifyContent: "space-between",
@@ -255,12 +363,10 @@ const styles = {
     gap: "12px",
     marginBottom: "15px",
   },
-
   editor: {
     borderRadius: "6px",
     overflow: "hidden",
   },
-
   controls: {
     display: "flex",
     alignItems: "center",
@@ -268,7 +374,6 @@ const styles = {
     gap: "10px",
     margin: "12px 0",
   },
-
   input: {
     flex: "1",
     minWidth: "180px",
@@ -277,7 +382,6 @@ const styles = {
     borderRadius: "6px",
     fontSize: "14px",
   },
-
   runButton: {
     background: "#2563eb",
     color: "#fff",
@@ -287,7 +391,6 @@ const styles = {
     cursor: "pointer",
     fontSize: "15px",
   },
-
   saveButton: {
     background: "#15803d",
     color: "#fff",
@@ -296,7 +399,6 @@ const styles = {
     borderRadius: "6px",
     cursor: "pointer",
   },
-
   loadButton: {
     background: "#2563eb",
     color: "#fff",
@@ -305,7 +407,6 @@ const styles = {
     borderRadius: "5px",
     cursor: "pointer",
   },
-
   removeButton: {
     background: "#dc2626",
     color: "#fff",
@@ -314,7 +415,6 @@ const styles = {
     borderRadius: "5px",
     cursor: "pointer",
   },
-
   pluginRow: {
     display: "flex",
     justifyContent: "space-between",
@@ -326,21 +426,32 @@ const styles = {
     borderRadius: "6px",
     marginBottom: "10px",
   },
-
+  pluginLabel: {
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: "10px",
+  },
+  pluginId: {
+    color: "#666",
+    fontSize: "12px",
+  },
   description: {
     color: "#666",
     fontSize: "14px",
   },
-
   message: {
-    color: "#166534",
     fontSize: "14px",
   },
-
   note: {
     color: "#666",
     fontSize: "12px",
     marginTop: "18px",
+  },
+  outputLabel: {
+    color: "#1d4ed8",
+    fontSize: "14px",
+    fontWeight: "bold",
   },
 };
 
