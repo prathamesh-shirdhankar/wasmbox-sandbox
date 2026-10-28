@@ -23,7 +23,7 @@ def test_plugin_file_exists_and_is_valid_python(name):
     compile(path.read_text(encoding="utf-8"), str(path), "exec")
 
 
-# ---- Stubs: switch these on when the real /run exists ----
+# ---- Real /run security checks ----
 
 
 def test_benign_control_runs_ok():
@@ -39,29 +39,47 @@ def test_benign_control_runs_ok():
     assert data["status"] == "ok"
     assert data["stdout"] == "hello from the control plugin\n"
     assert data["stderr"] == ""
-    assert data["exec_ms"] == 0
+    assert data["exec_ms"] > 0
     assert data["mem_bytes"] == 0
 
 
-@pytest.mark.skip(reason="Needs real /run and the Mid-Project audit")
 def test_read_passwd_is_blocked():
-    # Expect: status "denied" (or "error"), and "root:" NOT in stdout
-    pass
+    """File-reading plugin must not disclose real host file contents."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    source = (MALICIOUS_DIR / "read_passwd.py").read_text(encoding="utf-8")
+    response = client.post("/run", json={"code": source})
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["status"] in {"error", "denied"}, data
+    assert "root:" not in data["stdout"] + "\n" + data["stderr"], data
+    assert data["stderr"].strip(), data
 
 
-@pytest.mark.skip(reason="Needs real /run and the Mid-Project audit")
 def test_open_socket_is_blocked():
-    # Expect: status "denied", and "connected" NOT in stdout
-    pass
+    """Network plugin must fail without printing that it connected."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    source = (MALICIOUS_DIR / "open_socket.py").read_text(encoding="utf-8")
+    response = client.post("/run", json={"code": source})
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["status"] in {"error", "denied"}, data
+    assert "connected" not in data["stdout"], data
+    assert data["stderr"].strip(), data
 
 
-@pytest.mark.skip(reason="Needs the 50 ms timeout (Week 3)")
+@pytest.mark.skip(reason="50 ms is not reachable with this runner; see docs/SPIKES.md")
 def test_infinite_loop_times_out():
     # Expect: status "timeout" after about 50 ms
     pass
 
 
-@pytest.mark.skip(reason="Needs the memory cap (Week 3)")
+@pytest.mark.skip(reason="Memory usage is not measured; memory-bomb test intentionally not run")
 def test_memory_bomb_is_stopped():
     # Expect: status "memory_exceeded"
     pass

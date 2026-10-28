@@ -56,7 +56,7 @@ def run_code(payload: RunRequest) -> RunResponse:
             status=result.status,
             stdout=result.stdout,
             stderr=result.stderr,
-            exec_ms=0,
+            exec_ms=result.exec_ms,
             mem_bytes=0,
         )
     except Exception:
