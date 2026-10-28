@@ -1,28 +1,33 @@
 function OutputPanel({ output = {} }) {
   const statusLabels = {
+    ready: "Ready",
     ok: "Success",
     error: "Error",
     denied: "Denied",
     timeout: "Timed out",
     memory_exceeded: "Memory Exceeded",
+    invalid_request: "Invalid request",
   };
 
   const status = output.status || "ready";
-  const statusLabel = statusLabels[status] || "Ready";
+  const statusLabel = statusLabels[status] || status;
+
   const statusColor =
     status === "ok"
       ? "#15803d"
       : status === "timeout"
-      ? "#b45309"
-      : ["error", "denied", "memory_exceeded"].includes(status)
-      ? "#b91c1c"
-      : "#475569";
+        ? "#b45309"
+        : ["error", "denied", "memory_exceeded", "invalid_request"].includes(status)
+          ? "#b91c1c"
+          : "#475569";
 
-  const isServerUnavailable =
-    output.stderr?.toLowerCase().includes("cannot reach the server");
+  const stderr = output.stderr || "";
+  const isServerUnavailable = stderr
+    .toLowerCase()
+    .includes("cannot reach the server");
 
   const isInvalidRequest =
-    output.statusCode === 422 || output.status === "invalid_request";
+    output.statusCode === 422 || status === "invalid_request";
 
   return (
     <section style={styles.outputSection}>
@@ -38,22 +43,24 @@ function OutputPanel({ output = {} }) {
         Status: <strong>{statusLabel}</strong>
       </div>
 
-      {output.exec_ms !== undefined && (
+      {output.exec_ms != null && (
         <p style={styles.info}>
           Execution time: {output.exec_ms} ms
         </p>
       )}
 
-      <p style={styles.info}>
-        Memory: not measured yet
-      </p>
+      <p style={styles.info}>Memory: not measured yet</p>
 
       {isServerUnavailable && (
-        <p style={styles.warning}>Cannot reach the server.</p>
+        <p style={styles.warning}>
+          Cannot reach the server. Please check that the backend is running.
+        </p>
       )}
 
-      {isInvalidRequest && (
-        <p style={styles.warning}>Invalid request. Please check your input.</p>
+      {isInvalidRequest && !stderr.toLowerCase().includes("invalid request") && (
+        <p style={styles.warning}>
+          Invalid request. Please check your input.
+        </p>
       )}
 
       <div style={styles.outputBox}>
@@ -61,10 +68,10 @@ function OutputPanel({ output = {} }) {
         <pre>{output.stdout || "No output yet."}</pre>
       </div>
 
-      {output.stderr && (
+      {stderr.trim() !== "" && (
         <div style={styles.errorBox}>
           <h3>stderr</h3>
-          <pre>{output.stderr}</pre>
+          <pre>{stderr}</pre>
         </div>
       )}
     </section>
@@ -100,6 +107,7 @@ const styles = {
     borderRadius: "6px",
     marginBottom: "15px",
     textAlign: "left",
+    overflowX: "auto",
   },
   errorBox: {
     background: "#fff0f0",
@@ -108,6 +116,7 @@ const styles = {
     borderRadius: "6px",
     textAlign: "left",
     whiteSpace: "pre-wrap",
+    overflowX: "auto",
   },
 };
 

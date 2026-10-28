@@ -16,7 +16,7 @@ print("Wasmbox is working!")`
   );
 
   const [output, setOutput] = useState({
-    status: "ok",
+    status: "ready",
     stdout: "",
     stderr: "",
     exec_ms: null,
@@ -30,6 +30,7 @@ print("Wasmbox is working!")`
   const [pluginMessage, setPluginMessage] = useState("");
   const [pluginError, setPluginError] = useState(false);
   const [webhookMessage, setWebhookMessage] = useState("");
+  const [webhookError, setWebhookError] = useState(false);
   const [webhookLoading, setWebhookLoading] = useState(false);
   const [outputLabel, setOutputLabel] = useState("");
 
@@ -56,6 +57,7 @@ print("Wasmbox is working!")`
 
       setOutput({
         status: result.status ?? "error",
+        statusCode: result.statusCode,
         stdout: result.stdout ?? "",
         stderr: result.stderr ?? "",
         exec_ms: result.exec_ms ?? null,
@@ -92,9 +94,10 @@ print("Wasmbox is working!")`
       }
 
       setSelectedPluginId(String(plugin.id));
+      setPluginMessage(
+        `Saved "${plugin.name || pluginName.trim()}" (id ${plugin.id}).`
+      );
       setPluginName("");
-      setPluginMessage(`Saved "${plugin.name || pluginName.trim()}" (id ${plugin.id}).`);
-
       await refreshPlugins();
     } catch (error) {
       setPluginError(true);
@@ -124,8 +127,10 @@ print("Wasmbox is working!")`
 
   async function handleWebhook() {
     setWebhookMessage("");
+    setWebhookError(false);
 
     if (!selectedPluginId) {
+      setWebhookError(true);
       setWebhookMessage("Please select or load a plugin first.");
       return;
     }
@@ -137,6 +142,7 @@ print("Wasmbox is working!")`
 
       setOutput({
         status: result.status ?? "error",
+        statusCode: result.statusCode,
         stdout: result.stdout ?? "",
         stderr: result.stderr ?? "",
         exec_ms: result.exec_ms ?? null,
@@ -149,13 +155,20 @@ print("Wasmbox is working!")`
           : "Triggered by webhook"
       );
 
-      setWebhookMessage(
-        result.status === "ok"
-          ? "Webhook completed."
-          : "Webhook returned an error."
-      );
+      if (result.status === "ok") {
+        setWebhookMessage(
+          result.simulated
+            ? "Simulated webhook completed."
+            : "Webhook completed."
+        );
+      } else {
+        setWebhookError(true);
+        setWebhookMessage("Webhook returned an error.");
+      }
     } catch (error) {
+      setWebhookError(true);
       setWebhookMessage(error.message || "Webhook failed.");
+
       setOutput({
         status: "error",
         stdout: "",
@@ -163,27 +176,40 @@ print("Wasmbox is working!")`
         exec_ms: null,
         mem_bytes: null,
       });
+
       setOutputLabel("Webhook error");
     } finally {
       setWebhookLoading(false);
     }
   }
 
-  function handleRemovePlugin(id) {
-    setPluginError(false);
-    setPluginMessage(
-      "Remove is local-only in this demo; no backend DELETE endpoint is documented."
-    );
+  function showDemoStatus(status) {
+    const demoOutputs = {
+      ok: {
+        status: "ok",
+        stdout: "Demo completed successfully.\n",
+        stderr: "",
+        exec_ms: 125,
+        mem_bytes: null,
+      },
+      error: {
+        status: "error",
+        stdout: "",
+        stderr: "Example execution error (demo).",
+        exec_ms: 125,
+        mem_bytes: null,
+      },
+      timeout: {
+        status: "timeout",
+        stdout: "",
+        stderr: "Execution timed out (demo).",
+        exec_ms: 1500,
+        mem_bytes: null,
+      },
+    };
 
-    // No DELETE endpoint is documented, so do not claim
-    // that a plugin has been permanently deleted.
-    setSavedPlugins((previous) =>
-      previous.filter((plugin) => String(plugin.id) !== String(id))
-    );
-
-    if (String(selectedPluginId) === String(id)) {
-      setSelectedPluginId("");
-    }
+    setOutput(demoOutputs[status]);
+    setOutputLabel("Demo status preview — not a real execution");
   }
 
   return (
@@ -267,7 +293,9 @@ print("Wasmbox is working!")`
                   <input
                     type="radio"
                     name="selectedPlugin"
-                    checked={String(selectedPluginId) === String(plugin.id)}
+                    checked={
+                      String(selectedPluginId) === String(plugin.id)
+                    }
                     onChange={() =>
                       setSelectedPluginId(String(plugin.id))
                     }
@@ -276,35 +304,26 @@ print("Wasmbox is working!")`
                   <span style={styles.pluginId}>ID: {plugin.id}</span>
                 </label>
 
-                <div style={styles.controls}>
-                  <button
-                    onClick={() => handleLoadPlugin(plugin.id)}
-                    style={styles.loadButton}
-                  >
-                    Load
-                  </button>
-
-                  <button
-                    onClick={() => handleRemovePlugin(plugin.id)}
-                    style={styles.removeButton}
-                  >
-                    Remove (local)
-                  </button>
-                </div>
+                <button
+                  onClick={() => handleLoadPlugin(plugin.id)}
+                  style={styles.loadButton}
+                >
+                  Load
+                </button>
               </div>
             ))
           )}
 
           <p style={styles.note}>
-            Plugin storage is currently mock-only and temporary. Refreshing
-            the page clears mock data.
+            Plugin storage currently uses temporary mock data. It may
+            disappear when the page is refreshed.
           </p>
         </section>
 
         <section style={styles.section}>
           <h2>Webhook</h2>
           <p style={styles.description}>
-            Select a plugin above, then trigger its demo webhook.
+            Select a plugin above, then trigger its simulated webhook.
           </p>
 
           <button
@@ -316,10 +335,46 @@ print("Wasmbox is working!")`
           </button>
 
           {webhookMessage && (
-            <p role="status" style={styles.message}>
+            <p
+              role="status"
+              style={{
+                ...styles.message,
+                color: webhookError ? "#b91c1c" : "#166534",
+              }}
+            >
               {webhookMessage}
             </p>
           )}
+        </section>
+
+        <section style={styles.section}>
+          <h2>Demo Status Preview</h2>
+          <p style={styles.description}>
+            These buttons demonstrate output states; they do not run Python.
+          </p>
+
+          <div style={styles.controls}>
+            <button
+              onClick={() => showDemoStatus("ok")}
+              style={styles.loadButton}
+            >
+              Preview Success
+            </button>
+
+            <button
+              onClick={() => showDemoStatus("error")}
+              style={styles.removeButton}
+            >
+              Preview Error
+            </button>
+
+            <button
+              onClick={() => showDemoStatus("timeout")}
+              style={styles.timeoutButton}
+            >
+              Preview Timed out
+            </button>
+          </div>
         </section>
 
         {outputLabel && (
@@ -409,6 +464,14 @@ const styles = {
   },
   removeButton: {
     background: "#dc2626",
+    color: "#fff",
+    border: "none",
+    padding: "8px 12px",
+    borderRadius: "5px",
+    cursor: "pointer",
+  },
+  timeoutButton: {
+    background: "#b45309",
     color: "#fff",
     border: "none",
     padding: "8px 12px",
