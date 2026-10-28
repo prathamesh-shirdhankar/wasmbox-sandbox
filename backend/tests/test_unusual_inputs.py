@@ -135,3 +135,22 @@ def test_script_generating_large_output():
         assert "timed out" in data["stderr"].lower()
     assert data["exec_ms"] > 0
     assert data["mem_bytes"] == 0
+
+
+def test_repeated_timeout_interruptions_leave_server_healthy():
+    """Verify that multiple consecutive timeout-trapped runs do not poison the worker process."""
+    infinite_loop_code = "while True: pass"
+    for _ in range(3):
+        res = client.post("/run", json={"code": infinite_loop_code})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] in ("error", "timeout")
+
+    # Immediate benign execution must succeed cleanly
+    benign_res = client.post("/run", json={"code": "print(42 + 58)"})
+    assert benign_res.status_code == 200
+    benign_data = benign_res.json()
+    assert benign_data["status"] == "ok"
+    assert benign_data["stdout"] == "100\n"
+    assert benign_data["stderr"] == ""
+

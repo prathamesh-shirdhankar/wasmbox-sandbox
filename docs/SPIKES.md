@@ -422,13 +422,13 @@ MicroPython is designed for microcontrollers and embedded environments. Plugin a
 
 ---
 
-#### 3. Interim Notes (Day 3)
+#### 3. Interim Notes
 - MicroPython WASI emerged as the top candidate for Week 2.
-- Next step for Day 4: Investigate Wizer pre-initialization on MicroPython and finalize recommendations.
+- Next step for: Investigate Wizer pre-initialization on MicroPython and finalize recommendations.
 
 ---
 
-### Day 4: Wizer Pre-initialization & Final Spike Evaluation
+###  Wizer Pre-initialization & Final Spike Evaluation
 
 #### 1. Wizer Investigation (Time-box Findings)
 
@@ -449,6 +449,20 @@ MicroPython is designed for microcontrollers and embedded environments. Plugin a
     - **Result**: Tools like `componentize-py` do use Wizer successfully, but they rely on an extensive Rust toolchain, a Component Model wrapper, and hefty runtime assets (>25 MB) with high cold-start times if snapshots are not finely tuned.
 - **Is Wizer Necessary for Week 2?**:
   - **No.** MicroPython WASI without snapshotting already executes trivial scripts in **~220ms – 260ms** (and ~420ms on initial cold start). For interactive code execution in a student playground, 220ms is well within acceptable latency bounds.
+
+---
+
+### Week 1 Retrospective & Test Isolation Verification 
+
+- **Test Suite Health**: All Week 1 endpoint and contract unit tests pass under `pytest` with zero external network access.
+- **Filesystem Isolation**: Verified that the WebAssembly instance has no preopened host directories mapped via WASI, preventing arbitrary file read/write access.
+- **Contract Boundary**: Re-verified standard 5-field schema output consistency across benign runs and empty input rejections.
+
+### Memory Footprint Comparison 
+
+- **MicroPython WASI**: Initial WebAssembly memory pages allocate minimal linear memory (default 10 MiB ceiling verified sufficient for interpreter boot and standard user script execution).
+- **CPython WASI Comparison**: Full CPython runtime engines require substantially larger initial memory commitments (allocating 32–64 MiB just to map internal bytecode tables and dynamic runtime types).
+- **Conclusion**: MicroPython's lightweight memory profile allows higher density and concurrency on constrained host resources.
 
 ---
 
