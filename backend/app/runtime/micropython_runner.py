@@ -7,12 +7,15 @@ and the interpreter executes it at run time (see docs/PIPELINE.md).
 from __future__ import annotations
 
 import re
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from micropython_wasm import MicroPythonWasmError, run
+
+_RUNNER_LOCK = threading.Lock()
 
 # Always run the repo-managed interpreter, never bytes supplied by a caller.
 INTERPRETER_PATH = (
@@ -156,13 +159,14 @@ def run_plugin(
     started_at = time.perf_counter()
     try:
         # No readonly_dir and no host_functions: no files, no network.
-        result = run(
-            _wrap(script),
-            wasm_path=INTERPRETER_PATH,
-            memory_bytes=memory_bytes,
-            fuel=fuel,
-            wall_timeout_seconds=wall_timeout_seconds,
-        )
+        with _RUNNER_LOCK:
+            result = run(
+                _wrap(script),
+                wasm_path=INTERPRETER_PATH,
+                memory_bytes=memory_bytes,
+                fuel=fuel,
+                wall_timeout_seconds=wall_timeout_seconds,
+            )
     except MicroPythonWasmError as exc:
         elapsed_ms = _elapsed_ms(started_at)
         text = str(exc).strip()
