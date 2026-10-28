@@ -8,8 +8,8 @@ export async function runCode(code) {
       status: "ok",
       stdout: "Hello from Python!\nWasmbox is working!\n",
       stderr: "",
-      exec_ms: 0,
-      mem_bytes: 0,
+      exec_ms: null,
+      mem_bytes: null,
     };
   }
 
@@ -44,23 +44,61 @@ export async function runCode(code) {
       return {
         status: "error",
         stdout: data.stdout || "",
-        stderr:
-          typeof message === "string"
-            ? message
-            : JSON.stringify(message),
-        exec_ms: data.exec_ms || 0,
-        mem_bytes: data.mem_bytes || 0,
+        stderr: message,
+        exec_ms: data.exec_ms ?? null,
+        mem_bytes: data.mem_bytes ?? null,
       };
     }
 
     return data;
-  } catch (error) {
+  } catch {
     return {
       status: "error",
       stdout: "",
       stderr: "Cannot reach the server. Is the backend running?",
-      exec_ms: 0,
-      mem_bytes: 0,
+      exec_ms: null,
+      mem_bytes: null,
     };
+  }
+}
+
+export async function savePlugin(name, code) {
+  if (!name.trim()) {
+    throw new Error("Please enter a plugin name.");
+  }
+
+  try {
+    const response = await fetch("http://localhost:8000/plugins", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name, code }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const detail = data.detail;
+      const message = Array.isArray(detail)
+        ? detail.map((item) => item.msg || JSON.stringify(item)).join(", ")
+        : typeof detail === "string"
+          ? detail
+          : "Failed to save plugin.";
+
+      throw new Error(
+        response.status === 422
+          ? `Invalid request: ${message}`
+          : message
+      );
+    }
+
+    return data;
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error("Cannot reach the server. Is the backend running?");
+    }
+
+    throw error;
   }
 }
