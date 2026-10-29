@@ -2,7 +2,7 @@ const API_BASE = "http://localhost:8000";
 
 // Keep false to use the real backend.
 // Change to true only when you intentionally want mock mode.
-const MOCK_MODE = true;
+const MOCK_MODE = false;
 
 const mockPlugins = [];
 let nextMockId = 1;

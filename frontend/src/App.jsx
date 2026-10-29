@@ -315,8 +315,6 @@ print("Wasmbox is working!")`
           )}
 
           <p style={styles.note}>
-            Plugin storage currently uses temporary mock data. It may
-            disappear when the page is refreshed.
           </p>
         </section>
 
