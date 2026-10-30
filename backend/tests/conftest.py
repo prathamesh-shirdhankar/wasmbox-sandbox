@@ -30,4 +30,5 @@ def pytest_unconfigure(config):
     """Flush pending stdout/stderr and exit with pytest's recorded status."""
     sys.stdout.flush()
     sys.stderr.flush()
-    os._exit(_exit_code)
+    if sys.platform != "win32":
+        os._exit(_exit_code)
