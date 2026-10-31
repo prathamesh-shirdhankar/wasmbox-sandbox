@@ -1,3 +1,4 @@
+
 from pathlib import Path
 
 import pytest
@@ -19,7 +20,8 @@ PLUGINS = [
 def test_plugin_file_exists_and_is_valid_python(name):
     path = MALICIOUS_DIR / name
     assert path.exists(), f"{name} is missing"
-    # compile() only CHECKS the syntax. It does NOT run the code.
+
+    # compile() checks syntax only. It does not execute the code.
     compile(path.read_text(encoding="utf-8"), str(path), "exec")
 
 
@@ -27,31 +29,39 @@ def test_plugin_file_exists_and_is_valid_python(name):
 
 
 def test_benign_control_runs_ok():
-    """Verify that a benign plugin executes cleanly with status 'ok' through real /run."""
+    """Verify a benign plugin executes through the real /run endpoint."""
     from fastapi.testclient import TestClient
     from app.main import app
 
     client = TestClient(app)
-    source = (MALICIOUS_DIR / "benign_control.py").read_text(encoding="utf-8")
+    source = (MALICIOUS_DIR / "benign_control.py").read_text(
+        encoding="utf-8"
+    )
+
     response = client.post("/run", json={"code": source})
+
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
     assert data["stdout"] == "hello from the control plugin\n"
     assert data["stderr"] == ""
     assert data["exec_ms"] > 0
-    assert data["mem_bytes"] == 0
+    assert data["mem_bytes"] > 0
 
 
 def test_read_passwd_is_blocked():
-    """File-reading plugin must not disclose real host file contents."""
+    """Verify guest code cannot disclose real host file contents."""
     from fastapi.testclient import TestClient
     from app.main import app
 
     client = TestClient(app)
-    source = (MALICIOUS_DIR / "read_passwd.py").read_text(encoding="utf-8")
+    source = (MALICIOUS_DIR / "read_passwd.py").read_text(
+        encoding="utf-8"
+    )
+
     response = client.post("/run", json={"code": source})
-    assert response.status_code == 200, response.text
+
+    assert response.status_code == 200
     data = response.json()
     assert data["status"] in {"error", "denied"}, data
     assert "root:" not in data["stdout"] + "\n" + data["stderr"], data
@@ -59,27 +69,50 @@ def test_read_passwd_is_blocked():
 
 
 def test_open_socket_is_blocked():
-    """Network plugin must fail without printing that it connected."""
+    """Verify guest code cannot establish a network connection."""
     from fastapi.testclient import TestClient
     from app.main import app
 
     client = TestClient(app)
-    source = (MALICIOUS_DIR / "open_socket.py").read_text(encoding="utf-8")
+    source = (MALICIOUS_DIR / "open_socket.py").read_text(
+        encoding="utf-8"
+    )
+
     response = client.post("/run", json={"code": source})
-    assert response.status_code == 200, response.text
+
+    assert response.status_code == 200
     data = response.json()
     assert data["status"] in {"error", "denied"}, data
     assert "connected" not in data["stdout"], data
     assert data["stderr"].strip(), data
 
 
-@pytest.mark.skip(reason="50 ms is not reachable with this runner; see docs/SPIKES.md")
 def test_infinite_loop_times_out():
-    # Expect: status "timeout" after about 50 ms
-    pass
+    """Verify an infinite-loop plugin is interrupted through the real API."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    source = (MALICIOUS_DIR / "infinite_loop.py").read_text(
+        encoding="utf-8"
+    )
+
+    response = client.post("/run", json={"code": source})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "timeout", data
+    assert "timed out" in data["stderr"].lower(), data
+    assert data["exec_ms"] > 0
+    assert data["mem_bytes"] > 0
 
 
-@pytest.mark.skip(reason="Memory usage is not measured; memory-bomb test intentionally not run")
+@pytest.mark.skip(
+    reason=(
+        "Memory-bomb execution must be tested in an isolated environment "
+        "with an explicit process/container memory cap."
+    )
+)
 def test_memory_bomb_is_stopped():
-    # Expect: status "memory_exceeded"
+    # Do not run this test directly on the development host.
     pass
