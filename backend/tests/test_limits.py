@@ -88,7 +88,9 @@ def test_twenty_timeouts_then_normal_run_still_works():
 def test_memory_out_of_bounds_trap_is_recognized():
     diagnostic = (
         "exception_type=Trap | "
-        "message=wasm trap: out of bounds memory access | "
+        "memory fault at wasm address 0x61207972 "
+        "in linear memory of size 0x230000 | "
+        "wasm trap: out of bounds memory access | "
         "trap_code=<TrapCode.MEMORY_OUT_OF_BOUNDS: 1>"
     )
 
@@ -99,10 +101,21 @@ def test_memory_fault_diagnostic_is_recognized():
     diagnostic = (
         "memory fault at wasm address 0x61207972 "
         "in linear memory of size 0x230000 | "
-        "wasm trap: out of bounds memory access"
+        "wasm trap: out of bounds memory access | "
+        "trap_code=<TrapCode.MEMORY_OUT_OF_BOUNDS: 1>"
     )
 
     assert _memory_limit_failure(diagnostic) is True
+
+
+def test_unrelated_out_of_bounds_trap_is_not_memory_failure():
+    diagnostic = (
+        "exception_type=Trap | "
+        "trap_code=<TrapCode.MEMORY_OUT_OF_BOUNDS: 1> | "
+        "wasm trap: out of bounds memory access"
+    )
+
+    assert _memory_limit_failure(diagnostic) is False
 
 
 def test_fuel_exhaustion_is_not_classified_as_memory_failure():

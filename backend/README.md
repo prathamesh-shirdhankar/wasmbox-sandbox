@@ -5,7 +5,7 @@
 > **Runtime:** FastAPI + Wasmtime + MicroPython WASI
 > **Python:** 3.12
 > **Current Wasmtime dependency:** 49.0.0
-> **Status:** Runtime implementation and verification completed; peer review required before merging.
+> **Status:** Runtime implementation and verification completed; peer review addressed, with further testing recommended.
 
 ---
 
@@ -18,11 +18,11 @@ The backend is responsible for:
 - Receiving Python execution requests.
 - Validating plugin artifacts.
 - Executing Python code inside the MicroPython WASI interpreter.
-- Enforcing execution time, instruction-fuel and memory limits.
+- Enforcing execution-time, instruction-fuel and memory limits.
 - Capturing standard output and standard error.
 - Reporting execution status, execution time and memory usage.
 - Managing saved plugins and webhook execution.
-- Preventing guest programs from accessing restricted host resources.
+- Restricting guest access to host resources.
 
 The backend uses FastAPI for its HTTP API and Wasmtime for WebAssembly execution.
 
@@ -75,9 +75,7 @@ pydantic==2.9.2
 
 Dependencies are pinned to make the development and Docker environments reproducible.
 
-**Dependency decision:** Wasmtime remains pinned to 49.0.0. The memory-exhaustion fix was tested using this existing dependency; no dependency upgrade was required for the verified result.
-
----
+Dependency decision: Wasmtime remains pinned to 49.0.0. The memory-exhaustion fix was tested using this dependency; no dependency upgrade was required.
 
 ## 3. Backend Directory Structure
 
@@ -87,33 +85,26 @@ Relevant backend structure:
 wasmbox-sandbox/
 │
 ├── backend/
-│   │
 │   ├── app/
 │   │   ├── api/
 │   │   │   ├── routes.py
-│   │   │   ├── schemas.py
-│   │   │   └── README.md
+│   │   │   └── schemas.py
 │   │   │
 │   │   ├── runtime/
 │   │   │   ├── micropython_runner.py
 │   │   │   ├── _temp_packager.py
 │   │   │   ├── artifacts/
-│   │   │   │   ├── micropython-wasi.wasm
-│   │   │   │   └── README.md
-│   │   │   └── README.md
+│   │   │   │   └── micropython-wasi.wasm
 │   │   │
 │   │   └── main.py
 │   │
 │   ├── scripts/
-│   │   └── README.md
-│   │
 │   ├── tests/
 │   │   ├── test_api.py
 │   │   ├── test_limits.py
 │   │   ├── test_plugins_api.py
 │   │   ├── test_security_plugins.py
-│   │   ├── test_unusual_inputs.py
-│   │   └── README.md
+│   │   └── test_unusual_inputs.py
 │   │
 │   ├── Dockerfile
 │   └── requirements.txt
@@ -123,7 +114,6 @@ wasmbox-sandbox/
 │   └── malicious/
 │
 ├── docs/
-│
 ├── docker-compose.yml
 └── README.md
 ```
@@ -137,11 +127,9 @@ wasmbox-sandbox/
 | `backend/app/runtime/artifacts/micropython-wasi.wasm` | Repository-managed MicroPython WASI interpreter |
 | `backend/app/api/routes.py` | HTTP endpoints and execution response handling |
 | `backend/app/api/schemas.py` | API request and response schemas |
-| `backend/tests/test_limits.py` | Resource-limit and timeout tests |
+| `backend/tests/test_limits.py` | Resource-limit, timeout and memory-classification tests |
 | `backend/tests/test_security_plugins.py` | Security and malicious-plugin tests |
 | `backend/tests/test_plugins_api.py` | Plugin storage and webhook API tests |
-
----
 
 ## 4. Runtime Architecture
 
@@ -153,50 +141,50 @@ The current execution pipeline is:
 User submits Python source
           |
           v
-       FastAPI
+         FastAPI
           |
           v
-    Request validation
+     Request validation
           |
           v
-   Plugin artifact handling
+    Plugin artifact handling
           |
           v
- Extract wasmbox_script
-   custom WASM section
+  Extract wasmbox_script
+     custom WASM section
           |
           v
-    Shared Wasmtime Engine
+     Shared Wasmtime Engine
           |
           v
-   Compiled MicroPython Module
+    Compiled MicroPython Module
           |
           v
-    Create fresh Store
+       Create fresh Store
           |
           v
-    Apply resource limits
+      Apply resource limits
           |
           v
- Configure WASI environment
+   Configure WASI environment
           |
           v
-    Create fresh Instance
+      Create fresh Instance
           |
           v
- Execute MicroPython WASI
+   Execute MicroPython WASI
           |
           v
- Capture stdout and stderr
+   Capture stdout and stderr
           |
           v
- Measure current WASM memory
+   Measure current WASM memory
           |
           v
- Classify execution result
+   Classify execution result
           |
           v
-       FastAPI response
+        FastAPI response
 ```
 
 ### 4.2 Shared Engine and compiled Module
@@ -210,9 +198,7 @@ The current runner uses:
 
 The shared Engine and compiled Module avoid recompiling the interpreter for every plugin execution.
 
-The Store and Instance are created separately for each run.
-
-This is intended to provide execution-state separation while reusing the compiled interpreter.
+The Store and Instance are created separately for each run. This is intended to provide execution-state separation while reusing the compiled interpreter.
 
 ### 4.3 Runtime initialization
 
@@ -247,8 +233,6 @@ The `exec_ms` field measures the time spent during instantiation and guest execu
 Engine and compiled Module initialization occur separately and are excluded from the execution-time measurement.
 
 Artifact extraction and API request processing are also outside this measurement.
-
----
 
 ## 5. WebAssembly Artifact Format
 
@@ -287,31 +271,29 @@ backend/app/runtime/artifacts/micropython-wasi.wasm
 
 The execution environment uses the repository-managed interpreter rather than accepting an arbitrary interpreter supplied by a plugin.
 
----
-
 ## 6. Resource-Limit Configuration
 
-The current production defaults in:
+The runtime configuration is maintained in:
 
 `backend/app/runtime/micropython_runner.py`
 
-are:
+The documented defaults are:
 
-| Configuration | Current value | Purpose |
-|---|---:|---|
+| Configuration | Value | Purpose |
+|---|---|---|
 | `DEFAULT_MEMORY_BYTES` | 10 MiB | Wasmtime Store memory-size limit |
 | `DEFAULT_FUEL` | 30,000,000 | Instruction-fuel budget |
-| `DEFAULT_WALL_TIMEOUT_SECONDS` | 0.05 seconds | Default wall-clock timeout |
-| `MICROPYTHON_HEAP_SIZE` | 2M | MicroPython Python heap |
+| `DEFAULT_WALL_TIMEOUT_SECONDS` | 0.25 seconds | Default wall-clock timeout |
+| `MICROPYTHON_HEAP_SIZE` | `2M` | MicroPython Python heap |
 | `TICK_INTERVAL_SECONDS` | 0.005 seconds | Epoch ticker interval |
 | `WASM_PAGE_BYTES` | 65,536 bytes | WASM memory-page size |
 | `HOST_RESULT_BYTES` | 262,144 bytes | Host-call result buffer configuration |
 | `config.max_wasm_stack` | 512 KiB | Maximum WASM stack configuration |
 
-The Store also applies the following limits:
+The Store also applies resource limits:
 
 | Store resource | Limit |
-|---|---:|
+|---|---|
 | Instances | 1 |
 | Memories | 1 |
 | Tables | 8 |
@@ -321,13 +303,13 @@ The Store also applies the following limits:
 
 There are two separate memory configurations.
 
-**Wasmtime Store memory limit:**
+Wasmtime Store memory limit:
 
 ```python
 DEFAULT_MEMORY_BYTES = 10 * 1024 * 1024
 ```
 
-**MicroPython Python heap:**
+MicroPython Python heap:
 
 ```python
 MICROPYTHON_HEAP_SIZE = "2M"
@@ -335,13 +317,15 @@ MICROPYTHON_HEAP_SIZE = "2M"
 
 These are not the same thing.
 
-The 10 MiB limit controls the memory available to the WASM Store.
+The 10 MiB setting is passed to Wasmtime through the Store resource limits. It is a Store memory-size limit; it should not be described as a configured maximum WASM page count or as a guarantee that Python scripts can allocate 10 MiB of Python objects.
 
-The 2M heap setting configures the memory available to Python objects managed by MicroPython.
+The `2M` heap setting configures the memory available to Python objects managed by MicroPython.
 
-MicroPython can therefore exhaust its usable Python heap before the Wasmtime Store reaches its configured 10 MiB limit.
+MicroPython can therefore exhaust its usable Python heap before the Wasmtime Store reaches its configured 10 MiB memory-size limit.
 
-The 10 MiB Store limit must not be interpreted as a guarantee that a Python script can allocate 10 MiB of Python objects.
+During the isolated memory-bomb verification, the observed current exported WASM linear-memory size was approximately 2,293,760 bytes. This includes interpreter and runtime memory overhead; it is not a direct measurement of Python heap consumption.
+
+Important: The effective Python allocation constraint observed in this test was the MicroPython heap configuration, not the 10 MiB Store ceiling.
 
 ### 6.2 Memory reporting
 
@@ -365,7 +349,7 @@ Where:
 WASM_PAGE_BYTES = 65536
 ```
 
-**Important:** `mem_bytes` reports the current exported WASM linear-memory size when it is measured.
+`mem_bytes` reports the current exported WASM linear-memory size when it is measured.
 
 It is not:
 
@@ -376,8 +360,6 @@ It is not:
 - Maximum memory consumption during the entire execution.
 
 If an instance is not available or memory introspection fails, the returned value may be zero.
-
----
 
 ## 7. Fuel-Based Execution Limits
 
@@ -403,19 +385,29 @@ timeout
 
 Fuel exhaustion and wall-clock interruption are both reported as timeout conditions, but they have different underlying causes.
 
----
-
 ## 8. Wall-Clock Timeout and Epoch Interruption
 
-The current default wall-clock timeout is:
+The recommended default wall-clock timeout is 250 milliseconds.
 
 ```python
-DEFAULT_WALL_TIMEOUT_SECONDS = 0.05
+DEFAULT_WALL_TIMEOUT_SECONDS = 0.25
 ```
 
-Equivalent to 50 milliseconds.
+The 250 ms default provides more execution headroom for legitimate short-running Python programs than the previous 50 ms setting.
 
-### 8.1 Epoch interruption
+It is not a hard real-time guarantee.
+
+### 8.1 Why the default changed
+
+The previous 50 ms default was considered too aggressive for a general-purpose Python execution environment.
+
+A short but legitimate computation could be interrupted unnecessarily, depending on runtime overhead and host-system conditions.
+
+Vineet's review recommended increasing the default to 250 ms before merging.
+
+This change improves the available execution window, but does not guarantee that every program completing within 250 ms of ideal execution time will succeed.
+
+### 8.2 Epoch interruption
 
 The runner enables:
 
@@ -431,7 +423,7 @@ The ticker interval is:
 TICK_INTERVAL_SECONDS = 0.005
 ```
 
-### 8.2 Per-execution deadline
+### 8.3 Per-execution deadline
 
 For each run, the runner calculates a deadline based on the requested timeout.
 
@@ -447,7 +439,7 @@ The deadline is set before instantiation because instantiation itself executes W
 
 A lock synchronizes deadline configuration with epoch increments.
 
-### 8.3 Timeout behaviour
+### 8.4 Timeout behaviour
 
 The runner recognizes timeout-related diagnostics, including:
 
@@ -459,15 +451,13 @@ The runner recognizes timeout-related diagnostics, including:
 
 These failures are reported as:
 
-```text
+```python
 status = "timeout"
 ```
 
-### 8.4 Timeout limitations
+### 8.5 Timeout limitations
 
-The 50 ms timeout is an aggressive default.
-
-It is not a hard real-time guarantee.
+The 250 ms timeout is a configured execution limit, not a hard real-time guarantee.
 
 Actual interruption behaviour can be influenced by:
 
@@ -477,9 +467,9 @@ Actual interruption behaviour can be influenced by:
 - Runtime overhead.
 - WebAssembly instruction execution.
 
-The default timeout should receive peer review before the runtime is considered ready for production workloads.
+The default should be evaluated against actual plugin workloads.
 
----
+Tests that explicitly pass a 50 ms timeout remain valid for testing short-deadline interruption behaviour. Such test-specific values do not represent the recommended production default.
 
 ## 9. Memory-Exhaustion Detection and Classification
 
@@ -509,7 +499,7 @@ This did not match the required sandbox status.
 
 ### 9.2 Reserved exit code
 
-The runner now defines:
+The runner defines:
 
 ```python
 MEMORY_ERROR_EXIT_CODE = 86
@@ -529,47 +519,73 @@ The host runner recognizes the reserved exit code and returns:
 memory_exceeded
 ```
 
-### 9.3 MEMORY_OUT_OF_BOUNDS classification
+### 9.3 Narrowed MEMORY_OUT_OF_BOUNDS classification
 
-The memory-exhaustion detector also recognizes relevant Wasmtime memory diagnostics.
+Vineet's review identified that classifying every `trapcode.memory_out_of_bounds` diagnostic as memory exhaustion could incorrectly classify an interpreter or runtime defect.
 
-The detector checks for:
+The fallback classification must therefore be narrow.
+
+The detector recognizes explicit memory-growth or memory-size-limit diagnostics, such as:
+
+```text
+forcing a memory growth failure to be a trap
+forcing trap when growing memory
+memory size limit exceeded
+memory limit exceeded
+```
+
+For the specific out-of-bounds fallback, the diagnostic must contain all three of the following markers:
 
 ```text
 trapcode.memory_out_of_bounds
-```
-
-It also recognises the combination of:
-
-```text
 memory fault at wasm address
-```
-
-and:
-
-```text
 out of bounds memory access
 ```
 
-Other explicit Wasmtime memory-growth and memory-size-limit diagnostics are also recognised.
+A generic out-of-bounds trap without the additional memory-fault diagnostic is not sufficient.
 
-These cases are classified as:
+The intended detection logic is:
 
-```text
-memory_exceeded
+```python
+def _memory_limit_failure(exception_text: str) -> bool:
+    """Recognize memory-limit and verified linear-memory exhaustion failures."""
+    normalized = exception_text.lower()
+
+    reliable_markers = (
+        "forcing a memory growth failure to be a trap",
+        "forcing trap when growing memory",
+        "memory size limit exceeded",
+        "memory limit exceeded",
+    )
+
+    if any(marker in normalized for marker in reliable_markers):
+        return True
+
+    if (
+        "trapcode.memory_out_of_bounds" in normalized
+        and "memory fault at wasm address" in normalized
+        and "out of bounds memory access" in normalized
+    ):
+        return True
+
+    return False
 ```
 
-### 9.4 Important limitation
+The Python-level `MemoryError` handling through reserved exit code 86 remains the primary classification mechanism.
 
-A `MEMORY_OUT_OF_BOUNDS` trap can indicate actual memory exhaustion, but it can also indicate an interpreter or runtime defect.
+### 9.4 Classification tests
 
-The current classification addresses the observed MicroPython memory-bomb failure.
+The tests should verify:
 
-It does not prove that every out-of-bounds WASM trap is necessarily caused by a resource-limit violation.
+| Diagnostic | Expected classification |
+|---|---|
+| Reserved guest memory-error exit code | `memory_exceeded` |
+| Explicit Wasmtime memory-growth failure diagnostic | `memory_exceeded` |
+| Out-of-bounds diagnostic containing all three required markers | `memory_exceeded` |
+| Generic `trapcode.memory_out_of_bounds` without the additional address and access diagnostics | Not classified as memory exhaustion |
+| Fuel-exhaustion diagnostic | `timeout`, not `memory_exceeded` |
 
-This classification should be reviewed and monitored.
-
----
+This prevents a generic out-of-bounds trap from automatically being treated as proof of memory exhaustion.
 
 ## 10. Execution Statuses
 
@@ -592,7 +608,7 @@ Current runner status behaviour:
 | `ok` | Execution completed without a detected guest or runtime failure |
 | `error` | Guest exception, invalid execution or another runtime failure |
 | `timeout` | Wall-clock interruption or instruction-fuel exhaustion |
-| `memory_exceeded` | Recognised Python or WASM memory exhaustion |
+| `memory_exceeded` | Recognized Python or WASM memory exhaustion |
 
 The API schema may support additional statuses such as `denied`; this list describes the classifications handled by the runtime runner.
 
@@ -632,9 +648,7 @@ The API schema may support additional statuses such as `denied`; this list descr
 }
 ```
 
-These examples illustrate observed runtime outputs; execution times are environment-dependent.
-
----
+These examples illustrate observed runtime outputs. Execution times are environment-dependent and should not be treated as guaranteed values.
 
 ## 11. WASI and Host Capability Configuration
 
@@ -671,9 +685,9 @@ The runner depends on a private package helper.
 
 A future package version could rename, remove or change this helper.
 
-This dependency should receive peer review. A supported public API would be preferable if available.
+The dependency is accepted for the current implementation because the package version is pinned to `micropython-wasm==0.1a2` and the existing runtime includes a compatibility guard.
 
----
+A supported public API would be preferable if one becomes available. Replacing or vendoring this helper is a follow-up engineering task, not a prerequisite for the current reviewed implementation.
 
 ## 12. API Integration
 
@@ -699,7 +713,7 @@ mem_bytes=result.mem_bytes
 
 This replaces the earlier hard-coded zero value.
 
-The plugin webhook response also reports actual execution metrics.
+The plugin webhook response also reports execution metrics.
 
 ### API response fields
 
@@ -711,39 +725,40 @@ The plugin webhook response also reports actual execution metrics.
 | `exec_ms` | number | Execution duration in milliseconds |
 | `mem_bytes` | integer | Current exported WASM linear-memory size in bytes |
 
----
-
 ## 13. Automated Test Coverage
 
 The backend test suite verifies API behaviour, plugin handling, execution limits and selected security restrictions.
 
-### 13.1 Latest complete test result
+### 13.1 Latest complete local test result
 
 Command:
 
-```powershell
+```bash
 python -m pytest -q
 ```
 
 Latest recorded output:
 
 ```text
-.................................................................s..........
+..................................................................s
+..........                                                           [100%]
 
-75 passed, 1 skipped, 1 warning in 2.81s
+76 passed, 1 skipped, 1 warning in 4.90s
 ```
 
 Summary:
 
 | Result | Count |
-|---|---:|
-| Passed | 75 |
+|---|---|
+| Passed | 76 |
 | Skipped | 1 |
 | Failed | 0 |
 | Warnings | 1 |
-| Total collected | 76 |
+| Total collected | 77 |
 
 The suite completed successfully.
+
+The skipped test is intentional and is reserved for isolated Docker verification of the memory-bomb plugin.
 
 ### 13.2 Warning
 
@@ -767,28 +782,28 @@ File:
 backend/tests/test_limits.py
 ```
 
-The resource-limit test module contains eight tests.
+The resource-limit test module covers:
 
-| Test | What it verifies |
+| Test area | What it verifies |
 |---|---|
-| `test_short_wall_timeout_is_reported_as_timeout` | Infinite guest execution is interrupted by a short wall-clock deadline |
-| `test_normal_run_reports_real_elapsed_time` | Successful execution returns stdout and a positive execution time |
-| `test_fuel_exhaustion_is_reported_as_timeout` | Instruction-fuel exhaustion produces timeout status |
-| `test_infinite_loop_stops_with_wall_timeout_enabled` | Infinite-loop execution is stopped |
-| `test_twenty_timeouts_then_normal_run_still_works` | Runtime remains usable after repeated interruptions |
-| `test_memory_out_of_bounds_trap_is_recognized` | MEMORY_OUT_OF_BOUNDS is recognised as memory exhaustion |
-| `test_memory_fault_diagnostic_is_recognized` | Out-of-bounds memory-fault diagnostic is recognised |
-| `test_fuel_exhaustion_is_not_classified_as_memory_failure` | Fuel exhaustion is not mistaken for memory exhaustion |
+| Short wall timeout | Infinite guest execution is interrupted by a short wall-clock deadline |
+| Normal execution timing | Successful execution returns stdout and a positive execution time |
+| Fuel exhaustion | Instruction-fuel exhaustion produces timeout status |
+| Infinite-loop interruption | Infinite-loop execution is stopped |
+| Repeated timeout recovery | Runtime remains usable after repeated interruptions |
+| Memory diagnostic classification | Verified memory-exhaustion diagnostics are recognized |
+| Generic out-of-bounds diagnostic | An unrelated generic out-of-bounds trap is not automatically classified as memory exhaustion |
+| Fuel versus memory classification | Fuel exhaustion is not mistaken for memory exhaustion |
 
-### 13.4 Why infinite-loop tests use a high fuel allowance
+### 13.4 Why infinite-loop tests use explicit timeout values
 
-A timeout is a maximum permitted execution duration. It does not mean that every short Python program should run for at least the timeout duration.
+A timeout is a maximum permitted execution duration. It does not mean every short Python program should run for at least the timeout duration.
 
-A trivial statement can complete in less than 50 milliseconds and correctly return `ok`.
+A trivial statement can complete in less than 250 milliseconds and correctly return `ok`.
 
-The timeout tests therefore use an infinite guest loop and a high explicit fuel budget so that the wall-clock deadline can interrupt execution.
+Timeout tests may use a shorter explicit timeout and a high fuel allowance so that the wall-clock deadline can interrupt execution.
 
-The host CPython process must never execute the infinite loop directly.
+The host CPython process must never execute an unbounded guest loop directly.
 
 ### 13.5 Repeated timeout recovery test
 
@@ -803,6 +818,8 @@ recovered
 ```
 
 This checks that repeated epoch interruptions do not prevent subsequent normal executions in the tested environment.
+
+It is sequential coverage, not a complete concurrent stress test.
 
 ### 13.6 API tests
 
@@ -836,7 +853,7 @@ The plugin API tests cover:
 - Positive execution-time reporting.
 - Positive memory reporting after successful execution.
 
-The webhook test now checks:
+The webhook test checks:
 
 ```python
 assert data["exec_ms"] > 0
@@ -864,9 +881,9 @@ The security tests cover:
 | Infinite-loop test | Verifies timeout handling through the actual API |
 | Memory-bomb test | Reserved for separately isolated Docker verification |
 
-The malicious Python examples are not executed directly by the host pytest process when that would risk uncontrolled resource consumption.
+The security assertions should reflect the statuses actually emitted by the runner. For the tested password-file and network attempts, the expected status is `error`, not `denied`.
 
----
+The malicious Python examples are not executed directly by the host pytest process when that would risk uncontrolled resource consumption.
 
 ## 14. Memory-Bomb Integration Test
 
@@ -888,7 +905,7 @@ The test is instead executed through the WasmBox runner inside a disposable Dock
 
 The skipped local test is:
 
-```text
+```python
 test_memory_bomb_is_stopped
 ```
 
@@ -904,20 +921,20 @@ The isolated memory-bomb test used:
 | Container memory plus swap | 512 MiB |
 | CPU limit | 1 |
 | Wasmtime | 49.0.0 |
-| Project default fuel | 30,000,000 |
-| Project default wall timeout | 0.05 seconds |
+| Project default fuel at time of test | 30,000,000 |
+| Project default wall timeout at time of test | 0.05 seconds |
 
 The Docker image was built from the repository root using:
 
-```powershell
+```bash
 docker build -t wasmbox-memory-test -f backend/Dockerfile .
 ```
 
 The build completed successfully.
 
-### 14.3 Production-default verification
+### 14.3 Recorded production-default verification
 
-The final memory-bomb integration test deliberately used:
+The memory-bomb integration test used:
 
 ```python
 result = run_plugin(artifact)
@@ -925,9 +942,7 @@ result = run_plugin(artifact)
 
 No custom fuel or timeout arguments were supplied.
 
-This confirms the test used the defaults imported from the rebuilt runner.
-
-Observed configuration:
+The recorded configuration at the time of this test was:
 
 ```text
 WASMTIME: 49.0.0
@@ -935,7 +950,7 @@ DEFAULT FUEL: 30000000
 DEFAULT WALL TIMEOUT: 0.05
 ```
 
-Observed result:
+Recorded result:
 
 ```text
 STATUS: memory_exceeded
@@ -947,14 +962,14 @@ PROCESS SURVIVED
 Docker exit code: 0
 ```
 
-### 14.4 Interpretation
+### 14.4 Interpretation and verification boundary
 
-The result demonstrates that:
+The result demonstrates that, with the configuration used at the time:
 
 1. The actual memory-bomb plugin was executed through the WasmBox runner.
-2. The production-default fuel and timeout values were used.
+2. The configured default fuel and timeout values were used.
 3. Wasmtime 49.0.0 was used.
-4. The runner classified the observed memory trap as `memory_exceeded`.
+4. The runner classified the observed memory failure as `memory_exceeded`.
 5. The container process survived the execution.
 6. Docker returned exit code 0.
 
@@ -966,7 +981,9 @@ The reported WASM memory size was:
 
 This is the observed current exported WASM linear-memory size, not the total memory available to the container and not peak Python heap consumption.
 
----
+Important review clarification: The recorded Docker memory-bomb test used the earlier 50 ms default. The recommended default has since been increased to 250 ms following Vineet's review. The Docker integration test should be rerun after the timeout change so that the final report can claim verification using the final default configuration.
+
+The earlier result remains useful evidence for the memory-classification behaviour under its recorded configuration. It must not be presented as a test performed with the updated 250 ms default.
 
 ## 15. Additional Docker Behaviour Tests
 
@@ -974,7 +991,7 @@ Normal execution and timeout behaviour were also checked separately using Wasmti
 
 The container was restricted using:
 
-```text
+```bash
 --memory=512m
 --memory-swap=512m
 --cpus=1
@@ -997,7 +1014,7 @@ STDERR:
 EXECUTION MS: 0.93
 ```
 
-Result: **Passed**
+Result: Passed
 
 ### Test 2 — Small calculation
 
@@ -1005,10 +1022,8 @@ Guest source:
 
 ```python
 total = 0
-
 for number in range(1, 1001):
     total += number
-
 print("sum:", total)
 ```
 
@@ -1021,7 +1036,7 @@ STDERR:
 EXECUTION MS: 1.25
 ```
 
-Result: **Passed**
+Result: Passed
 
 ### Test 3 — Infinite loop
 
@@ -1041,7 +1056,7 @@ STDERR: Execution timed out: wall-clock or instruction fuel limit exceeded.
 EXECUTION MS: 2.91
 ```
 
-Result: **Passed**
+Result: Passed
 
 ### Summary
 
@@ -1052,9 +1067,9 @@ Result: **Passed**
 | Infinite loop | `timeout` | `timeout` |
 | Memory bomb | `memory_exceeded` | `memory_exceeded` |
 
-All four observed behaviours matched the expected status.
+The recorded behaviours matched the expected statuses under the configurations used for those tests.
 
----
+The memory-bomb result used the earlier 50 ms default, as documented in Section 14.
 
 ## 16. Wasmtime Version Compatibility Verification
 
@@ -1078,11 +1093,9 @@ The following behaviours were confirmed on 49.0.0:
 | Infinite-loop interruption | `timeout` |
 | Container process survival | Yes |
 
-The final production-default memory-bomb test used the existing 49.0.0 dependency.
+The final recorded memory-bomb test used the existing 49.0.0 dependency.
 
 No Wasmtime dependency upgrade is included in this change.
-
----
 
 ## 17. Docker Configuration
 
@@ -1112,7 +1125,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 Build from the repository root:
 
-```powershell
+```bash
 docker build -t wasmbox-memory-test -f backend/Dockerfile .
 ```
 
@@ -1123,8 +1136,6 @@ The Docker build was completed successfully during verification.
 The root `docker-compose.yml` defines the backend build context and port mapping.
 
 The backend is exposed on port 8000.
-
----
 
 ## 18. Reproducing the Verification
 
@@ -1140,39 +1151,39 @@ Windows PowerShell:
 
 ### Step 2 — Install backend requirements
 
-```powershell
+```bash
 python -m pip install -r backend/requirements.txt
 ```
 
 ### Step 3 — Run the complete test suite
 
-```powershell
+```bash
 python -m pytest -q
 ```
 
-Expected latest verified result:
+Latest recorded result:
 
 ```text
-75 passed, 1 skipped, 1 warning
+76 passed, 1 skipped, 1 warning
 ```
 
 Test results can vary if the code, environment or dependency versions change.
 
 ### Step 4 — Check whitespace and patch formatting
 
-```powershell
+```bash
 git diff --check
 ```
 
 For staged changes:
 
-```powershell
+```bash
 git diff --cached --check
 ```
 
 ### Step 5 — Rebuild the Docker image
 
-```powershell
+```bash
 docker build -t wasmbox-memory-test -f backend/Dockerfile .
 ```
 
@@ -1182,23 +1193,25 @@ Memory-bomb tests must run inside a disposable Docker container with explicit me
 
 Do not run the memory-bomb plugin using ordinary host CPython.
 
----
+After changing the default timeout from 50 ms to 250 ms, repeat the isolated memory-bomb test with no custom timeout or fuel arguments. Record the actual configuration and output.
 
 ## 19. Known Limitations and Engineering Review Points
 
-The implementation and tests have been verified, but the following items require additional engineering review.
+The implementation and tests have been reviewed, but the following items remain relevant engineering considerations.
 
 ### 19.1 Default wall-clock timeout
 
-Current configuration:
+Current recommended configuration:
 
 ```python
-DEFAULT_WALL_TIMEOUT_SECONDS = 0.05
+DEFAULT_WALL_TIMEOUT_SECONDS = 0.25
 ```
 
-The 50 ms default is aggressive.
+The previous 50 ms default was considered too aggressive for general plugin workloads.
 
-A legitimate Python script may require more time depending on:
+The 250 ms setting provides additional execution headroom but is not a hard real-time guarantee.
+
+A legitimate Python script may still require more time depending on:
 
 - Script complexity.
 - Host machine performance.
@@ -1206,7 +1219,7 @@ A legitimate Python script may require more time depending on:
 - Concurrent plugin executions.
 - Interpreter startup and runtime overhead.
 
-The default should be reviewed against expected workloads before production deployment.
+The Docker memory-bomb integration test must be repeated with the updated default before documenting it as verified under that configuration.
 
 ### 19.2 Different memory boundaries
 
@@ -1217,19 +1230,29 @@ DEFAULT_MEMORY_BYTES = 10 * 1024 * 1024
 MICROPYTHON_HEAP_SIZE = "2M"
 ```
 
-The 10 MiB Wasmtime Store limit and 2M Python heap setting are independent.
+The 10 MiB Wasmtime Store memory-size limit and 2M MicroPython Python heap are independent.
+
+The effective Python allocation constraint observed in the memory-bomb test was the MicroPython heap configuration.
 
 Documentation, API responses and user-facing messaging must not imply that Python code can necessarily allocate 10 MiB of Python objects.
 
 ### 19.3 MEMORY_OUT_OF_BOUNDS classification
 
-The runner classifies recognised `MEMORY_OUT_OF_BOUNDS` diagnostics as `memory_exceeded`.
+The runner must not classify every generic `MEMORY_OUT_OF_BOUNDS` trap as `memory_exceeded`.
 
-This fixed the observed MicroPython memory-exhaustion case.
+The primary signal is the guest `MemoryError` handled through the reserved exit code.
 
-However, an out-of-bounds trap could also indicate a bug or defect in the interpreter or runtime.
+The fallback diagnostic requires all three markers:
 
-The classification should be reviewed to ensure that unrelated runtime failures are not incorrectly reported as memory-limit failures.
+- `trapcode.memory_out_of_bounds`
+- `memory fault at wasm address`
+- `out of bounds memory access`
+
+Explicit memory-growth and memory-size-limit diagnostics are also recognized.
+
+Regression tests should ensure that a generic out-of-bounds trap without the additional evidence is not classified as memory exhaustion.
+
+This reduces the risk of reporting an interpreter or runtime defect as a resource-limit event.
 
 ### 19.4 Private host-call registration helper
 
@@ -1243,7 +1266,9 @@ This is a private implementation detail of `micropython-wasm`.
 
 It works with the currently installed pinned package, but an upstream package change could break it.
 
-A supported public interface would be preferable.
+The current implementation is accepted for this change with the package pinned to `0.1a2`.
+
+A supported public interface or a maintained local helper would be preferable as a future improvement.
 
 ### 19.5 Memory metric limitations
 
@@ -1263,7 +1288,9 @@ A future memory metric should define exactly what is measured and how the measur
 
 The shared Engine and Module architecture uses fresh Stores and Instances.
 
-Additional stress testing should verify:
+The existing sequential repeated-timeout test provides useful recovery coverage, but it is not a complete concurrency stress test.
+
+Additional testing should verify:
 
 - Multiple plugins executing concurrently.
 - Repeated timeout interruptions under concurrency.
@@ -1271,7 +1298,7 @@ Additional stress testing should verify:
 - Runtime stability when multiple requests are received.
 - Epoch deadline isolation between Stores.
 
-The existing tests establish the tested single-process behaviours but are not a complete concurrency stress test.
+A concurrent two-to-four-run stress test is recommended as follow-up work.
 
 ### 19.7 Security review
 
@@ -1294,8 +1321,6 @@ The successful test results demonstrate the observed behaviour of the tested rev
 
 They should not be interpreted as a full production security certification.
 
----
-
 ## 20. Current Change Summary
 
 The runtime investigation and implementation introduced the following improvements:
@@ -1307,98 +1332,123 @@ The runtime investigation and implementation introduced the following improvemen
 5. MicroPython heap configuration.
 6. Current exported WASM linear-memory reporting.
 7. Python `MemoryError` handling through a reserved exit code.
-8. Classification of relevant `MEMORY_OUT_OF_BOUNDS` traps.
+8. Narrow classification of relevant `MEMORY_OUT_OF_BOUNDS` diagnostics.
 9. Improved timeout and memory-exhaustion diagnostics.
 10. API propagation of actual memory measurements.
 11. Regression tests for timeout, fuel and memory-trap behaviour.
 12. Improved plugin API and security test coverage.
 
-### Latest verification
+### Latest local verification
 
 ```text
 Local pytest:
-75 passed
+
+76 passed
 1 skipped
 0 failed
 1 warning
+```
 
-Docker:
+### Recorded Docker verification
+
+```text
 Memory-bomb -> memory_exceeded
 Normal print -> ok
 Small calculation -> ok
 Infinite loop -> timeout
-
-Wasmtime:
-49.0.0
-
-Production default fuel:
-30,000,000
-
-Production default wall timeout:
-0.05 seconds
-
-Memory-bomb Docker configuration:
-512 MiB memory
-512 MiB memory + swap limit
-1 CPU
-
-Memory-bomb process:
-Survived
-
-Docker exit code:
-0
 ```
 
----
+### Runtime dependency
 
-## 21. Pull Request Review Checklist
+```text
+Wasmtime:
 
-The following items should be reviewed before merging.
+49.0.0
+```
 
-| Review item | Status |
+### Recommended runtime defaults
+
+```text
+Fuel:
+
+30,000,000
+
+Wall timeout:
+
+0.25 seconds
+
+Wasmtime Store memory-size limit:
+
+10 MiB
+
+MicroPython Python heap:
+
+2M
+```
+
+### Recorded memory-bomb Docker configuration
+
+```text
+512 MiB container memory
+512 MiB memory + swap limit
+1 CPU
+```
+
+The recorded memory-bomb run used the earlier 50 ms timeout default. It must be repeated with the recommended 250 ms default to establish final-default verification.
+
+## 21. Pull Request Review Summary
+
+Vineet reviewed the runtime implementation and approved the architecture, with minor changes and follow-up recommendations.
+
+| Review item | Resolution |
 |---|---|
-| Shared Engine and Module architecture | Implemented |
-| Fresh Store and Instance | Implemented |
+| Shared Engine and Module architecture | Accepted |
+| Fresh Store and Instance | Accepted |
 | Fuel enforcement | Implemented |
 | Epoch-based timeout | Implemented |
-| Memory measurement | Implemented |
-| Memory-bomb classification | Implemented and Docker-tested |
-| Regression tests | Added |
+| Default wall timeout of 50 ms | Increase to 250 ms before merging |
+| MicroPython heap versus Store memory | Clarified in documentation |
+| Broad out-of-bounds memory classification | Narrowed to require all three diagnostic markers |
+| Reserved guest MemoryError exit code | Retained as primary memory-exhaustion signal |
+| Private host-call helper | Accepted for this PR with pinned package version; future improvement recommended |
+| Repeated timeout recovery | Sequential test coverage added |
+| Concurrent execution stress testing | Recommended follow-up |
 | Full local pytest suite | Passed |
-| Docker integration verification | Passed |
-| Existing Wasmtime dependency retained | Verified |
-| Timeout default suitability | Requires peer review |
-| MicroPython heap versus Store memory | Requires peer review |
-| MEMORY_OUT_OF_BOUNDS classification | Requires peer review |
-| Private host-call helper dependency | Requires peer review |
-| Concurrent execution stress testing | Further testing recommended |
+| Docker integration verification | Passed under the previously recorded configuration |
+| Final-default Docker memory-bomb verification | Repeat after applying the 250 ms default |
 
-### Required reviewer attention
+### Review decisions and remaining work
 
-The runtime changes should receive review from the backend/security owner, particularly:
+Before merging:
 
-1. Is a 50 ms default wall-clock timeout suitable for intended plugin workloads?
-2. Is the 2M MicroPython heap configuration appropriate alongside the 10 MiB Store memory limit?
-3. Should all matching `MEMORY_OUT_OF_BOUNDS` traps be classified as `memory_exceeded`?
-4. Is relying on the private `_define_host_call` helper acceptable, or should it be replaced?
+1. Confirm `DEFAULT_WALL_TIMEOUT_SECONDS` is `0.25` in the runtime code.
+2. Confirm the memory detector uses the narrowed diagnostic checks.
+3. Confirm regression tests cover both the positive diagnostic and generic out-of-bounds negative case.
+4. Run the full pytest suite.
+5. Repeat the isolated Docker memory-bomb test using the updated default timeout.
+6. Record the actual final Docker configuration and result.
 
----
+The following are recommended follow-up improvements rather than blockers identified for this PR:
+
+- Add concurrent execution stress tests.
+- Replace the private host-call helper with a supported public API if available.
+- Investigate a reliable peak-memory measurement.
 
 ## 22. Final Status
 
-**The current implementation and recorded verification are complete. Peer review is required before merging.**
+The runtime implementation has passed the current local test suite and received peer review. The review changes must be reflected in the final code and the Docker memory-bomb test should be repeated with the updated default before final merge verification.
 
-The latest verified test suite reports:
+Latest recorded local test result:
 
-- 75 passed.
+- 76 passed.
 - 1 skipped.
 - 0 failed.
 - 1 non-blocking deprecation warning.
 
-The actual memory-bomb plugin was verified inside Docker using the project's pinned Wasmtime 49.0.0 and production-default fuel and timeout settings.
+The actual memory-bomb plugin was verified inside Docker using the project's pinned Wasmtime 49.0.0. That recorded run used the earlier 50 ms wall-timeout default.
 
 Normal Python execution, a small calculation and infinite-loop interruption were also verified.
 
 No Wasmtime dependency upgrade was made.
 
-The runtime changes should be reviewed before being considered ready for production deployment.
+The runtime remains a prototype and should not be considered production security-certified.

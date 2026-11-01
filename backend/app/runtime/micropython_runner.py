@@ -50,7 +50,7 @@ MEMORY_ERROR_EXIT_CODE = 86
 # Per-execution limits.
 DEFAULT_MEMORY_BYTES = 10 * 1024 * 1024
 DEFAULT_FUEL = 30_000_000
-DEFAULT_WALL_TIMEOUT_SECONDS = 0.05
+DEFAULT_WALL_TIMEOUT_SECONDS = 0.25
 
 # MicroPython Python heap, distinct from Wasmtime linear memory.
 MICROPYTHON_HEAP_SIZE = "2M"
@@ -257,7 +257,7 @@ def _timeout_message(exception_text: str) -> str | None:
 
 
 def _memory_limit_failure(exception_text: str) -> bool:
-    """Recognize memory-limit and linear-memory exhaustion failures."""
+    """Recognize memory-limit and verified linear-memory exhaustion failures."""
     normalized = exception_text.lower()
 
     reliable_markers = (
@@ -270,14 +270,12 @@ def _memory_limit_failure(exception_text: str) -> bool:
     if any(marker in normalized for marker in reliable_markers):
         return True
 
-    # MicroPython can exhaust its usable heap before the Wasmtime Store
-    # reaches its configured linear-memory limit. In that case, Wasmtime
-    # can report MEMORY_OUT_OF_BOUNDS instead of a Python MemoryError.
-    if "trapcode.memory_out_of_bounds" in normalized:
-        return True
-
+    # A MEMORY_OUT_OF_BOUNDS trap alone can also indicate an interpreter bug.
+    # Require the memory-fault address and out-of-bounds diagnostic as
+    # additional context before classifying it as memory exhaustion.
     if (
-        "memory fault at wasm address" in normalized
+        "trapcode.memory_out_of_bounds" in normalized
+        and "memory fault at wasm address" in normalized
         and "out of bounds memory access" in normalized
     ):
         return True
