@@ -50,3 +50,63 @@ Both observed outcomes were `error`, not `denied`. The HTTP endpoint itself retu
 - It does not test timeout enforcement or memory exhaustion. The infinite-loop test remains skipped until the timeout implementation is verified, and the memory-bomb test remains skipped because measured memory enforcement is not established.
 - `mem_bytes` is a placeholder (`0`); memory usage is **not measured**.
 - `exec_ms` is currently a placeholder (`0`); real API execution timing remains to be implemented.
+
+
+---
+
+## Runner Architecture & Security Review
+
+### 1. Architectural Model & Lifecycle Isolation
+
+The runtime redesign replaces black-box invocations with a custom-managed Wasmtime pipeline:
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│ Host Process Lifetime                                          │
+│  ├── Engine (Wasmtime, epoch_interruption=True)                │
+│  ├── Module (pre-compiled MicroPython WASI binary)             │
+│  └── Epoch Ticker Thread (background 5ms increments)           │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+           ┌─────────────────────┴─────────────────────┐
+           │ Per-Execution Invocation (run_plugin)     │
+           │  ├── Store (fresh per request)            │
+           │  │    ├── Fuel allocation (30M)           │
+           │  │    └── Epoch deadline (wall-clock)     │
+           │  ├── Instance (instantiated per request)  │
+           │  └── Linear Memory Introspection          │
+           └───────────────────────────────────────────┘
+```
+
+* **Store & Instance Lifecycle:** Every `run_plugin` call creates a fresh `Store` and `Instance`. State does not persist across executions; global variables, heap allocations, and modified buffers in guest memory are immediately garbage-collected with the `Store` teardown.
+* **Engine & Module Sharing:** The Wasmtime `Engine` and compiled `Module` are immutable and thread-safe, initialized once under `_RUNTIME_LOCK` via double-checked locking (`_get_runtime()`).
+* **Timeout Isolation:** Epoch ticks are driven by a dedicated daemon ticker thread (`wasmbox-epoch-ticker`) advancing epochs every 5 ms. Synchronization between `engine.increment_epoch()` and `store.set_epoch_deadline()` is mediated via `tick_lock`. Deadlines are per-Store, ensuring concurrent requests do not corrupt or prematurely trigger each other's deadlines.
+
+---
+
+### 2. Resource Limit Enforcement & Dual-Ceiling Model
+
+The investigation resolved the exact memory-exhaustion classification boundary by identifying the dual memory ceiling:
+
+| Limit Layer | Configured Size | Mechanism | Failure Manifestation | Status Classification |
+|---|---|---|---|---|
+| **MicroPython Heap** | `2M` (`MICROPYTHON_HEAP_SIZE`) | MicroPython internal heap allocator | Guest `MemoryError` trapped in `_wrap` → `SystemExit(86)` | `memory_exceeded` |
+| **Wasmtime Linear Memory** | `10 MiB` (`DEFAULT_MEMORY_BYTES`) | Wasmtime Store memory boundary / page growth | `TrapCode.MEMORY_OUT_OF_BOUNDS` / memory fault trap | `memory_exceeded` |
+| **Instruction Fuel** | `30,000,000` | Wasmtime deterministic fuel counter | `TrapCode.OUT_OF_FUEL` trap | `timeout` |
+| **Wall-Clock Timeout** | `0.05s` (default) | Wasmtime epoch interruption | Epoch deadline trap | `timeout` |
+
+* **Observation:** The 2M MicroPython heap is the binding limit for guest Python allocations. Attempts by plugins to allocate unbounded arrays/lists exhaust the MicroPython heap at ~2.29 MiB of total linear memory (observed in Docker with `plugins/malicious/memory_bomb.py`), generating a `MEMORY_OUT_OF_BOUNDS` trap before the 10 MiB Wasmtime ceiling is reached. Both paths are now correctly classified as `memory_exceeded`.
+
+---
+
+### 3. Security Findings & Risk Matrix
+
+| Finding ID | Component | Description | Severity | Status / Mitigation |
+|---|---|---|:---:|---|
+| **SEC-01** | `micropython_runner.py` | **Aggressive Default Wall Timeout:** The default wall-clock limit was lowered to 50 ms. While infinite loops are halted, legitimate compute-heavy plugins may experience false timeouts. | **Medium** | Recommended increasing `DEFAULT_WALL_TIMEOUT_SECONDS` to `0.25s` (250 ms) in production configuration. |
+| **SEC-02** | `micropython_runner.py` | **OOB Trap Specificity:** `TrapCode.MEMORY_OUT_OF_BOUNDS` is mapped to `memory_exceeded`. However, native runtime bugs or invalid pointer dereferences in the interpreter could theoretically be masked as memory exhaustion rather than runner errors. | **Low** | Current heuristic also inspects fault address strings. Hardened in test suite (`test_limits.py`). |
+| **SEC-03** | `micropython_runner.py` | **Private Host-Call Coupling:** Host function registration accesses `run.__globals__["_define_host_call"]` from `micropython-wasm==0.1a2`. While functional, dependency updates could break initialization. | **Low** | Mitigated by fail-fast check in `_get_runtime()` with explicit error message. Recommend pin enforcement or vendored bridge in Phase D. |
+| **SEC-04** | `routes.py` / `_wrap` | **Information Leakage in Stderr:** Guest exceptions strip wrapper frames via `_clean_error()` and error marker regex, ensuring host paths (e.g. `micropython_runner.py`) are not leaked in the API response. | **Informational** | Verified in `test_unusual_inputs.py` and `test_runner_interface.py`. |
+| **SEC-05** | Host Allowlist | **WASI Preopens & Host Function Surface:** `_run_once` registers an empty dict of host functions `{}` and passes no directory preopens to WASI. No file read/write, socket operations, or environment access are available to guest code. | **Informational** | Verified in `test_security_audit.py` and `test_security_plugins.py`. |
+
+---
