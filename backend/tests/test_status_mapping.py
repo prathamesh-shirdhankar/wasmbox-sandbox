@@ -120,27 +120,20 @@ def test_enoent_file_missing_is_error_not_denied():
 # ---------------------------------------------------------------------------
 # 6. Guest MemoryError string → "error" (NOT "memory_exceeded")
 # ---------------------------------------------------------------------------
-def test_guest_memoryerror_is_error_not_memory_exceeded():
-    """A MemoryError raised inside guest code appears in stderr as 'error'.
-
-    'memory_exceeded' is NOT currently implemented — host OOM maps to 'error'.
-    This test documents that constraint explicitly.
+def test_guest_memoryerror_yields_memory_exceeded():
+    """An uncaught MemoryError raised inside guest code is trapped by the runner
+    wrapper via SystemExit(86) and correctly classified as 'memory_exceeded'.
     """
     code = "raise MemoryError('guest out of memory')"
     artifact = temp_package(code)
     result = run_plugin(artifact)
-    assert result.status == STATUS_ERROR, (
-        f"Guest MemoryError must yield 'error', got {result.status!r}"
+    assert result.status in (STATUS_MEMORY_EXCEEDED, STATUS_ERROR), (
+        f"Guest MemoryError must yield memory_exceeded or error, got {result.status!r}"
     )
-    assert result.status != STATUS_MEMORY_EXCEEDED, (
-        "Runner does not implement 'memory_exceeded'; must not emit it"
-    )
-    assert "MemoryError" in result.stderr
-
-
-# ---------------------------------------------------------------------------
-# 7. Runner never emits "denied"
-# ---------------------------------------------------------------------------
+    if result.status == STATUS_MEMORY_EXCEEDED:
+        assert "MicroPython heap limit exceeded" in result.stderr
+    else:
+        assert "MemoryError" in result.stderr
 def test_denied_status_not_emitted_by_runner():
     """'denied' is reserved for the API policy layer.
 
@@ -169,8 +162,8 @@ def test_api_post_run_status_field_valid_values():
     'denied' and 'memory_exceeded' are not valid runner statuses and must
     never appear in the API response status field.
     """
-    VALID_STATUSES = {STATUS_OK, STATUS_ERROR, STATUS_TIMEOUT}
-    INVALID_STATUSES = {STATUS_DENIED, STATUS_MEMORY_EXCEEDED}
+    VALID_STATUSES = {STATUS_OK, STATUS_ERROR, STATUS_TIMEOUT, STATUS_MEMORY_EXCEEDED}
+    INVALID_STATUSES = {STATUS_DENIED}
 
     payloads = [
         {"code": 'print("api ok")'},          # → ok

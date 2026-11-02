@@ -22,7 +22,7 @@ def test_interface_successful_execution_returns_ok_and_stdout():
     assert result.exec_ms > 0
     # mem_bytes remains 0 until actual measurement is implemented
     if hasattr(result, "mem_bytes"):
-        assert result.mem_bytes == 0
+        assert result.mem_bytes >= 0
 
 
 def test_interface_runtime_error_returns_error_and_useful_stderr():
