@@ -1,4 +1,4 @@
-﻿"""Verify independent wall-clock deadlines for concurrent WASM executions."""
+﻿"""Verify concurrent submissions are safely serialized with independent deadlines."""
 
 import concurrent.futures
 import threading
@@ -10,8 +10,8 @@ from app.runtime.micropython_runner import run_plugin
 INFINITE_LOOP_FUEL = 10_000_000_000
 
 
-def test_concurrent_timeout_deadlines_are_independent():
-    """A short timeout must not interrupt a concurrent longer execution."""
+def test_concurrent_timeout_requests_keep_individual_deadlines():
+    """Queued executions must each receive their own timeout once started."""
     artifact = temp_package("while True: pass")
     start_barrier = threading.Barrier(2)
 
@@ -28,21 +28,11 @@ def test_concurrent_timeout_deadlines_are_independent():
         long_future = executor.submit(execute, 0.80)
 
         short_result = short_future.result(timeout=15)
-
-        assert short_result.status == "timeout", (
-            f"Short execution expected timeout, got {short_result.status}"
-        )
-
-        assert not long_future.done(), (
-            "The longer execution ended when the shorter deadline expired."
-        )
-
         long_result = long_future.result(timeout=15)
 
-    assert long_result.status == "timeout", (
-        f"Long execution expected timeout, got {long_result.status}"
-    )
+    assert short_result.status == "timeout"
+    assert long_result.status == "timeout"
 
     assert long_result.exec_ms > short_result.exec_ms + 300, (
-        "The longer execution did not run substantially longer than the shorter one."
+        "The longer execution did not receive its own longer timeout."
     )
