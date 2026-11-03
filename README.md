@@ -1,84 +1,62 @@
-# WasmBox
+WasmBox Sandbox — Frontend
 
-Secure multi-tenant Python plugin sandbox using WebAssembly (Wasmtime), with a React and Monaco developer portal.
+Overview
 
-## Folders
+WasmBox Sandbox is a React-based interface for writing Python code, running it, and viewing execution results.
 
-| Folder | What it holds | Owner |
-|---|---|---|
-| `backend/app/api/` | The web server: receives requests and sends answers | Vineet |
-| `backend/app/runtime/` | Runs `.wasm` files safely from Python | Prathamesh |
-| `backend/tests/` | Automatic checks that prove things work | Priya |
-| `backend/scripts/` | Small helper scripts you run by hand | Prathamesh |
-| `frontend/` | The website in the browser (React and Monaco) | Sashmita |
-| `plugins/benign/` | Safe test programs | Prathamesh |
-| `plugins/malicious/` | Attack programs we use to test our security | Priya |
-| `docs/` | Our notes, findings and explanations | Everyone |
+Features
 
-## Rules
+- Python code editor using React and Monaco.
+- Run button with execution status and output display.
+- Success, error, and timeout status previews.
+- Plugin Manager with Save, List, and Load functionality.
+- Simulated webhook functionality.
+- Friendly error messages and execution-time display.
 
-- One branch per task, named `yourname/short-task`
-- Small pull requests, and nobody merges their own
-- Stuck for 90 minutes? Ask in the team chat
+Requirements
 
-## Setup (everyone)
+- Node.js and npm.
+- Backend running at "http://localhost:8000" for real Python execution.
 
-1. Install Python 3.12 (check with `py -0` on Windows)
+Installation
 
-2. From the repo folder, create and activate a virtual environment.
+Open a terminal in the "frontend" folder and run:
 
-   PowerShell:
+npm install
 
-```powershell
-   py -3.12 -m venv .venv
-   .venv\Scripts\Activate.ps1
-```
+Start the frontend
 
-   Git Bash:
+npm run dev
 
-```bash
-   py -3.12 -m venv .venv
-   source .venv/Scripts/activate
-```
+Open the local URL displayed in the terminal, usually "http://localhost:5173".
 
-3. Install the backend packages:
+Build the frontend
 
-```bash
-   pip install -r backend/requirements.txt
-```
+npm run build
 
-## How to run each part
+Testing
 
-Each folder explains how to run its own part:
+The test cases are documented in "TEST_SHEET.md".
 
-- WASM runtime and scripts: `backend/app/runtime/README.md` and `backend/scripts/README.md`
-- Web server: `backend/app/api/README.md`
-- Tests: `backend/tests/README.md`
-- Frontend: `frontend/README.md`
+Important limitations
 
-## Current Status
+- Python execution uses the existing backend API.
+- Plugin Save, List, and Load and webhook actions currently use temporary mock data in the frontend.
+- Demo status previews display example results and do not execute Python.
+- Mock plugin data may disappear after refreshing the page.
+- Real plugin and webhook integration requires a confirmed backend API contract.
 
-- Wasmtime-based WASM runtime is working.
-- Benign WASM execution has been verified from the Python host.
-- Backend API endpoints and frontend are integrated.
-- Host-function feasibility experiments are documented in `docs/SPIKES.md`.
-- Extism is currently being evaluated as a separate runtime option for Python-in-WASM host functions; it is not part of the production runtime yet.
-- The Python-in-WASM → host-function path remains under investigation.
+Screenshots
 
-## Development Workflow
+Add screenshots of the following features when available:
 
-Before opening a pull request, run:
+- Python execution success.
+- Python execution error.
+- Plugin Save and Load.
+- Webhook demo result.
 
-```bash
-git status
-git diff
-git grep --cached -n -e "EOF" -e "cat >"
-```
+Only label a screenshot as a real backend result when it has been verified against the backend.
 
-Then:
+Build status
 
-1. Run the relevant tests and scripts for your changes before pushing.
-2. Create a small PR with a clear description of:
-   - What changed
-   - How it was tested
-   - Any limitations or unresolved findings
+The frontend build was previously completed successfully. Run "npm run build" again after your latest changes to verify the current version.

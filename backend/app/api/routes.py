@@ -57,7 +57,7 @@ def run_code(payload: RunRequest) -> RunResponse:
             stdout=result.stdout,
             stderr=result.stderr,
             exec_ms=result.exec_ms,
-            mem_bytes=0,
+            mem_bytes=result.mem_bytes,
         )
     except Exception:
         logger.exception("Runner raised an unexpected exception")
