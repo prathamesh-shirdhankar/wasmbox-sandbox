@@ -29,27 +29,54 @@ These results are evidence for these two attempts, not a complete penetration te
 
 ## 3. Fuel, wall-clock timeout, and memory
 
-WasmBox configures explicit limits in the runtime runner:
+The current merged runner configures these default limits:
 
-- **Fuel:** 20,000,000 units by default. Fuel is a deterministic budget for instrumented Wasm execution. When exhausted, Wasmtime traps; it is not a count of Python source lines.
-- **Wall-clock timeout:** 1.0 second by default. This provides a time-based stop. In this integration, the measured runner call includes engine/module startup as well as guest execution.
-- **Guest memory ceiling:** 10 MiB. A benign `print("hi")` diagnostic completed with this setting. That startup check does not prove that every script's memory needs fit within the limit.
-- **Reported memory use:** `mem_bytes` remains `0` as an API placeholder. Actual per-run memory consumption is **not measured**; clients and documentation must not present zero as a measured memory result.
+- **Fuel:** 30,000,000 units. Fuel is a deterministic budget for instrumented Wasm execution. It is not a count of Python source lines.
+- **Wall-clock timeout:** 0.25 seconds (250 ms) by default. The runner uses Wasmtime epoch interruption with a shared ticker that advances approximately every 5 ms. Actual interruption timing can vary with scheduling.
+- **Wasmtime Store memory limit:** 10 MiB per execution.
+- **MicroPython heap:** 2 MiB (`heapsize=2M`). This is a separate limit from the Wasmtime Store memory limit.
+- **Reported memory use:** `mem_bytes` now reports the current size of exported guest WebAssembly linear memory in bytes. It is not peak memory, total MicroPython heap usage, or total host/container memory.
 
-Fuel and time are complementary. Fuel helps bound the amount of Wasm work and is deterministic for a given execution configuration. A wall-clock timeout reflects elapsed time and includes overhead such as runtime/module startup in this integration. Wasmtime documents fuel-based and epoch/time-based interruption as different mechanisms with different determinism and overhead properties ([Wasmtime: interrupting Wasm execution](https://docs.wasmtime.dev/examples-interrupting-wasm.html)).
+An uncaught MicroPython `MemoryError` is converted to a reserved guest exit code. Verified Wasmtime memory-limit failures are also mapped to `status: memory_exceeded`. Fuel exhaustion and wall-clock interruption are mapped to `status: timeout`. Ordinary guest exceptions remain `status: error`.
 
-The installed `micropython-wasm` 0.1a2 package produced these observed trap messages:
+Fuel and wall-clock interruption are complementary mechanisms. Fuel limits instrumented Wasm work, while epoch interruption provides a time-based stop. Neither measurement should be confused with total HTTP request latency.
+
+The installed `micropython-wasm` 0.1a2 package has produced these observed trap messages:
 
 - Wall-clock interruption: `guest trapped: wasm trap: interrupt`
 - Fuel exhaustion: `guest trapped: wasm trap: all fuel consumed by WebAssembly`
 
-The runner maps these resource-limit failures to `status: timeout` with readable messages. Ordinary Python errors, such as division by zero or syntax errors, should remain `status: error`.
+The runner reports these resource-limit outcomes using the corresponding API status.
 
-## 4. Timing evidence and the 50 ms target
+## 4. Timing evidence: historical and current measurements
 
-Five successful `POST /run` requests ran `print("hi")` on one Windows development machine. The returned `exec_ms` values were 242.43, 284.23, 197.51, 207.61, and 198.75 ms. The median was **207.61 ms**, with a minimum of **197.51 ms** and maximum of **284.23 ms**.
+### Historical measurements
 
-`exec_ms` is measured using a monotonic timer around `micropython_wasm.run()`. It includes engine/module startup and guest execution, but excludes packaging and custom-section extraction that occur before the timer starts. The 50 ms probe did not allow even a benign `print("hi")` request to complete, so the 50 ms target is **not met** by this runner configuration. These five samples describe one machine and are not a general benchmark.
+An earlier runner revision recorded five successful `POST /run` requests for `print("hi")` on a Windows development machine:
+
+242.43, 284.23, 197.51, 207.61, and 198.75 ms.
+
+The median was 207.61 ms, with a minimum of 197.51 ms and maximum of 284.23 ms. These measurements belong to the earlier runner implementation and are not directly comparable with the current shared-runtime measurements.
+
+The earlier 50 ms wall-clock experiment was too aggressive for that cold-start configuration. The current default wall-clock timeout is 250 ms; 50 ms is not the current default.
+
+### Current Linux startup measurements
+
+Measured in the Linux Docker environment using `backend/scripts/startup_timing.py`:
+
+| Measurement | Result |
+|---|---:|
+| First `run_plugin()` call | 178.9 ms |
+| Ten subsequent calls: minimum | 0.8 ms |
+| Ten subsequent calls: median | 0.9 ms |
+| Ten subsequent calls: maximum | 1.1 ms |
+| Separate Engine + Module construction samples | 96.7, 91.7, 109.3 ms |
+
+The first call includes lazy shared Engine and Module initialization, plus execution. Later calls reuse the initialized runtime. The separate construction measurements include creating a new Engine, so they are not pure Module-only compilation times.
+
+The current runner's `exec_ms` measures WASM instantiation and guest execution. It excludes shared Engine and Module initialization, waiting to acquire the process-wide runner lock, per-run Store/Linker/WASI setup, packaging, and custom-section extraction.
+
+Live HTTP load-test results, including single-worker and two-worker comparisons, are recorded in `docs/LOAD_TEST.md`. In the tested two-CPU container, two workers reduced p50 and p95 HTTP latency at 100 concurrent requests, while throughput remained approximately 99 requests per second. These are environment-specific measurements, not general production-capacity guarantees.
 
 ## 5. What Wizer is—and is not in WasmBox
 
@@ -80,10 +107,10 @@ The current design choices are:
 2. Embed source code in the `wasmbox_script` custom section, then extract and execute that source at run time.
 3. Validate empty input and enforce a maximum source length of 10,000 characters before packaging.
 4. Apply explicit fuel, wall-clock, and guest-memory limits, and report timeout traps using the agreed API status.
-5. Return execution time through `exec_ms`, while leaving `mem_bytes` as an explicitly unmeasured placeholder.
+5. Return `exec_ms` for WASM instantiation and guest execution, and report current exported guest linear memory through `mem_bytes`; neither field represents total request time or peak host memory.
 6. Keep host filesystem and network capabilities narrow, and verify concrete behavior with API-level tests rather than treating the word "sandbox" as proof of isolation.
 
-Remaining limitations include the unmet 50 ms target, unmeasured memory consumption, a small number of security probes rather than an exhaustive audit, and timing measurements from a single machine. These results support a working prototype and a transparent set of limits; they do not constitute a complete security certification or production-readiness assessment.
+Remaining limitations include the absence of peak guest-memory and total host-memory measurements, a small number of security probes rather than an exhaustive audit, and performance measurements from one capped Linux Docker environment. The application-level host-function bridge is also not yet established as a guest capability. These results support a working prototype and a transparent set of limits; they do not constitute a complete security certification or production-readiness assessment.
 
 ## References
 

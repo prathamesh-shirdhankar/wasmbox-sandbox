@@ -89,6 +89,9 @@ class _Runtime:
 _RUNTIME: _Runtime | None = None
 _RUNTIME_LOCK = threading.Lock()
 
+# Protects wasmtime-py's process-global function allocator.
+_RUNNER_LOCK = threading.Lock()
+
 
 def _read_leb128(data: bytes, pos: int) -> tuple[int, int]:
     result = 0
@@ -595,10 +598,13 @@ def run_plugin(
             f"Runner initialization failed: {message}",
         )
 
-    return _run_once(
-        runtime,
-        _wrap(script),
-        memory_bytes=memory_bytes,
-        fuel=fuel,
-        wall_timeout_seconds=wall_timeout_seconds,
-    )
+    # Serialize Wasmtime operations within this Python process.
+    # Protects host-call registration, execution, and cleanup.
+    with _RUNNER_LOCK:
+        return _run_once(
+            runtime,
+            _wrap(script),
+            memory_bytes=memory_bytes,
+            fuel=fuel,
+            wall_timeout_seconds=wall_timeout_seconds,
+        )
