@@ -346,11 +346,15 @@ Retain that licence file and its attribution when redistributing the bundled int
 
 The following screenshots illustrate the browser interface. Add the image files to `docs/screenshots/` in the repository and commit them so GitHub can render the images.
 
-![Python editor and Run button](docs/screenshots/editor-and-run.png)
+![Application overview](docs/screenshots/overview.png)
 
-![Plugin manager and simulated webhook](docs/screenshots/plugins-and-webhook.png)
+![Plugin manager](docs/screenshots/plugin-manager.png)
 
-![Output panel](docs/screenshots/output-panel.png)
+![Python execution error](docs/screenshots/python-error.png)
+
+![Python execution success](docs/screenshots/python-success.png)
+
+![Webhook execution success](docs/screenshots/webhook-success.png)
 
 The screenshots show the UI at the time they were captured. They are illustrative and do not replace the API or test evidence described above.
 
