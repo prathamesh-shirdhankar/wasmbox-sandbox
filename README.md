@@ -4,6 +4,8 @@
 
 A working prototype for writing, running, saving, and loading Python plugins through a browser-based interface. The backend executes Python using a MicroPython WASI interpreter inside Wasmtime and returns structured execution results.
 
+![WasmBox Python Editor and Execution](docs/screenshots/overview.png)
+
 ## 1. Features
 
 - **Python editor:** Write Python in the browser using Monaco Editor.
@@ -342,7 +344,7 @@ Retain that licence file and its attribution when redistributing the bundled int
 
 ## 16. Screenshots
 
-The following screenshots illustrate the browser interface. Add the image files to `docs/screenshots/` in the repository and commit them so GitHub can render the images.
+The following screenshots illustrate the browser interface:
 
 ![Application overview](docs/screenshots/overview.png)
 
