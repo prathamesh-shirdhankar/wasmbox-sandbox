@@ -4,8 +4,6 @@
 
 A working prototype for writing, running, saving, and loading Python plugins through a browser-based interface. The backend executes Python using a MicroPython WASI interpreter inside Wasmtime and returns structured execution results.
 
-> **Project scope:** Engineering prototype for local development and demonstration. It is not production-ready and must not be exposed to the public internet.
-
 ## 1. Features
 
 - **Python editor:** Write Python in the browser using Monaco Editor.
